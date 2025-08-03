@@ -37,9 +37,9 @@ There are 2 ways to reach the workload settings page:
 
 1. Navigation pane → System → Permissions → Microsoft Defender XDR → Roles → Workload settings
 
-![](https://github.com/user-attachments/assets/c8eb6ea2-e069-4588-afbd-7a5d96dfeb15)
+![](https://github.com/user-attachments/assets/62d7cbef-7b11-49fb-93b8-854c59a9781a)
 
-![](https://github.com/user-attachments/assets/41270a6d-f5a0-401d-b487-706925e4bd09)
+![](https://github.com/user-attachments/assets/00d915a7-f9e7-435d-a40f-606db8976a69)
 
 2. Navigation pane → System → Settings → Microsoft Defender XDR → Permissions and roles
 
@@ -59,9 +59,9 @@ Details on procedure to create customer roles in unified RBAC: https://learn.mic
 
 Navigation pane → System → Permissions → Microsoft Defender XDR → Roles → Create custom role
 
-![](https://github.com/user-attachments/assets/c8eb6ea2-e069-4588-afbd-7a5d96dfeb15)
+![](https://github.com/user-attachments/assets/62d7cbef-7b11-49fb-93b8-854c59a9781a)
 
-![](https://github.com/user-attachments/assets/41270a6d-f5a0-401d-b487-706925e4bd09)
+![](https://github.com/user-attachments/assets/2b5f3d2f-84f7-4040-8459-0ebf01a87c4f)
 
 ### 3.1. Provide a role name
 
@@ -112,3 +112,73 @@ Identity scoping restricts the identities that a user have permissions to
 This applies only to MDI and the setting is grayed out if MDI is not selected in data sources
 
 ![](https://github.com/user-attachments/assets/3f3ce891-7c5a-43b3-a5f2-4cb1ad27cc0e)
+
+## 4. Scoping devices for MDE
+
+The unified RBAC roles define the actions that selected principals can performed in Defender portal
+
+Device groups can be used to limit access to related alerts and data of the devices onboarded to MDE to user groups
+
+## 4.1. Create device groups
+
+Details on device groups: https://learn.microsoft.com/en-us/defender-endpoint/machine-groups
+
+Navigation pane → System → Settings → Endpoints → Device groups → Add device group
+
+![](https://github.com/user-attachments/assets/5768f23d-547b-4917-ad46-8dffd3edd3c5)
+
+![](https://github.com/user-attachments/assets/aaa883b2-e095-45b8-8f77-f373801d669f)
+
+### 4.2. General settings
+
+Provide a device group name and specify the remediation level:
+
+![](https://github.com/user-attachments/assets/27819917-d848-4847-a89b-3ba4c5b88f81)
+
+### 4.3. Devices setting
+
+Specify the matching rule that determines which devices belong to the group
+
+The devices can be grouped based on names, domains, tags and OS
+
+![](https://github.com/user-attachments/assets/65f0a1e0-221f-46f3-a03a-174fb42d4dd7)
+
+> [!Tip]
+>
+> Tags are case sensitive!
+
+> [!Note]
+>
+> The tags here refers to the devices tags in MDE, which is unrelated to the tags in Azure
+>
+> [Dynamic rules](https://learn.microsoft.com/en-us/defender-xdr/configure-asset-rules) can be configured to automatically tag devices
+>
+> Navigation pane → System → Settings → Microsoft Defender XDR → Asset Rule Management
+>
+> ![](https://github.com/user-attachments/assets/abbd4a97-1823-45c8-9846-2695fbe5ae59)
+
+### 4.4. Preview devices
+
+Verify whether the device matching rule selects the correct devices:
+
+![](https://github.com/user-attachments/assets/c341b591-41b7-4bff-9c90-e3011cc63e58)
+
+### 4.5. Assign user access
+
+Select the Entra ID user groups that should have access to the device group:
+
+![](https://github.com/user-attachments/assets/41c6f0f5-a7b2-430a-bba3-9b8d4f443b50)
+
+### 4.6. Ungrouped devices (default)
+
+After the first device group is created, a default ungrouped devices group is created to _catch_ devices not matched by any of the preceding rules:
+
+![](https://github.com/user-attachments/assets/d6b304ad-c710-48dd-88b1-3715fed3aa63)
+
+There are no user groups assigned to the ungrouped devices by default, which means **any user** (with the appropriate unified RBAC roles) can access ungroup devices
+
+Assign at least one user group to limit access to the ungrouped devices:
+
+(Security Administrator at the Entra ID level would still have access to the ungrouped devices)
+
+![](https://github.com/user-attachments/assets/568ea7e8-4c97-4836-bb7b-b0f027a52c8a)
