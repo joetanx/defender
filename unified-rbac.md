@@ -103,13 +103,12 @@ Available data sources for security operations permissions:
 
 Available data sources for security posture permissions:
 
-<img width="644" height="199" alt="image" src="https://github.com/user-attachments/assets/15d33ea7-3ad2-42a7-86dc-ce0b7077509b" />
+![](https://github.com/user-attachments/assets/15d33ea7-3ad2-42a7-86dc-ce0b7077509b)
 
-### 3.3.3. Select identity scope
+#### 3.3.3. Select identity scope
 
 Identity scoping restricts the identities that a user have permissions to
 
 This applies only to MDI and the setting is grayed out if MDI is not selected in data sources
 
 ![](https://github.com/user-attachments/assets/3f3ce891-7c5a-43b3-a5f2-4cb1ad27cc0e)
-
