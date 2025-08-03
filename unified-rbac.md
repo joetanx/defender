@@ -43,7 +43,7 @@ There are 2 ways to reach the workload settings page:
 
 2. Navigation pane → System → Settings → Microsoft Defender XDR → Permissions and roles
 
-![](https://github.com/user-attachments/assets/acb6831b-d877-477b-ae84-98d9c5e54926)
+![](https://github.com/user-attachments/assets/98783bb3-2d1e-4181-878f-d600538a25b2)
 
 Both paths leads to the _Activate unified role-based access control_ page
 
