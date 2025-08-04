@@ -1,0 +1,106 @@
+Exposure management
+├── Overview
+├── Attack surface
+│   ├── Map
+│   └── Attack paths
+├── Exposure insights
+│   ├── Initiatives
+│   ├── Metrics
+│   ├── Recommendations
+│   └── Events
+├── Secure score
+└── Data connectors
+Investigation & response
+├── Incidents & alerts
+│   ├── Incidents
+│   └── Alerts
+├── Hunting
+│   ├── Advanced hunting
+│   └── Custom detection rules
+├── Actions & submissions
+│   ├── Action center
+│   └── Submissions
+└── Partner catalog
+    ├── Technology partners
+    └── Professional services
+Threat Intelligence
+├── Threat analytics
+├── Intel management
+├── Intel profiles
+├── Intel explorer
+└── Intel projects
+Assets
+├── Devices
+├── Identities
+└── Applications
+Microsoft Sentinel
+├── Search
+├── Threat management
+│   ├── Workbooks
+│   ├── Hunting
+│   ├── Notebooks
+│   ├── Threat Intelligence
+│   └── MITRE ATT&CK
+├── Content management
+│   ├── Content hub
+│   ├── Repositories
+│   └── Community
+└── Configuration
+    ├── Data connectors
+    ├── Analytics
+    ├── Summary rules
+    ├── Watchlists
+    └── Automation
+Identities
+├── Dashboard
+├── Service accounts
+├── Health issues
+└── Tools
+Endpoints
+├── Vulnerability management
+│   ├── Dashboard
+│   ├── Recommendations
+│   ├── Remediation
+│   ├── Inventories
+│   ├── Weaknesses
+│   ├── Event timeline
+│   └── Baseline assessments
+├── Partners and APIs
+│   ├── Connected applications
+│   └── API explorer
+└── Configuration management
+    ├── Dashboard
+    └── Endpoint security policies
+Email & collaboration
+├── Overview
+├── Investigations
+├── Explorer
+├── Review
+├── Campaigns
+├── Threat tracker
+├── Exchange message trace
+├── Attack simulation training
+└── Policies & rules
+Cloud apps
+├── Cloud discovery
+├── Cloud app catalog
+├── OAuth apps
+├── Activity log
+├── Governance log
+└── Policies
+    ├── Policy management
+    └── Policy templates
+Others
+├── Cases
+├── SOC optimization
+├── Reports
+├── Learning hub
+├── Trials
+└── More resources
+System
+├── Audit
+├── Data management
+│   └── Table management
+├── Permissions
+├── Health
+└── Settings
