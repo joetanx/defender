@@ -71,11 +71,9 @@ Navigation pane → System → Permissions → Microsoft Defender XDR → Roles 
 
 The permissions are grouped into 3 permission groups:
 
-|Group|Permissions|
-|---|---|
-|Security operations|![](https://github.com/user-attachments/assets/ed440ef4-a283-4d8d-b22b-cb7f623e03bd)|
-|Security posture|![](https://github.com/user-attachments/assets/859fe486-1d63-42f4-b43a-f0ac755125ad)|
-|Authorization and settings|![](https://github.com/user-attachments/assets/b310c3d6-99be-47ea-a34b-1c7f199347bd)|
+|Security operations|Security posture|Authorization and settings|
+|---|---|--|
+|![](https://github.com/user-attachments/assets/8bfa2161-bd76-4753-9f9e-c2a830bdc248)|![](https://github.com/user-attachments/assets/8c3d333b-ce35-412f-953e-26c61292cbc4)|![](https://github.com/user-attachments/assets/fca90603-57bf-4faf-835c-41b1853f0dad)|
 
 Select from read-only and read and manage options, or use custom permissions for granular assignment
 
@@ -97,7 +95,7 @@ The data sources are the Defender products that the users should have access to,
 
 Available data sources for security operations permissions:
 
-(And also auhorization and settings permissions, because it precludes security operations read-only permissions)
+(And also for auhorization and settings permissions, because it precludes _Security data basics (read)_ permission)
 
 ![](https://github.com/user-attachments/assets/b423316a-4bc7-4742-9161-29aeaf4986e8)
 
