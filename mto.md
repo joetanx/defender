@@ -40,7 +40,7 @@ Multi-tenant management → Settings → Check desired tenants → Remove tenant
 
 The tenant switcher button is available in the Defender portal home page:
 
-![](https://github.com/user-attachments/assets/466e162b-6591-4e6a-969a-7cda6948bab2)
+![](https://github.com/user-attachments/assets/279c14c9-e488-4102-88c1-9c902f07dedb)
 
 Select `Switch tenant` and select the desired tenant to switch:
 
