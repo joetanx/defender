@@ -2,7 +2,7 @@
 
 https://learn.microsoft.com/en-us/unified-secops/mto-overview
 
-Multitenant management for Microsoft Defender XDR and Microsoft Sentinel in the Defender portal provides the SOC teams with a single, unified view of all tenants
+Multi-tenant management for Microsoft Defender XDR and Microsoft Sentinel in the Defender portal provides the SOC teams with a single, unified view of all tenants
 
 This view enables the SOC teams to quickly investigate incidents and perform advanced hunting across data from multiple tenants, improving security operations
 
