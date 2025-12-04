@@ -117,7 +117,7 @@ The unified RBAC roles define the actions that selected principals can performed
 
 Device groups can be used to limit access to related alerts and data of the devices onboarded to MDE to user groups
 
-## 4.1. Create device groups
+### 4.1. Create device groups
 
 Details on device groups: https://learn.microsoft.com/en-us/defender-endpoint/machine-groups
 
