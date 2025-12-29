@@ -192,3 +192,5 @@ Assign at least one user group to limit access to the ungrouped devices:
 ![](https://github.com/user-attachments/assets/f57f01c9-1343-444d-82b6-241c555887ff)
 
 ![](https://github.com/user-attachments/assets/6307ea9f-5afc-4abc-a84c-77b47b6037c2)
+
+![](https://github.com/user-attachments/assets/66c99958-98fe-4420-9965-dda4412b2e01)
