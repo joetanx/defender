@@ -180,3 +180,15 @@ Assign at least one user group to limit access to the ungrouped devices:
 (Security Administrator at the Entra ID level would still have access to the ungrouped devices)
 
 ![](https://github.com/user-attachments/assets/568ea7e8-4c97-4836-bb7b-b0f027a52c8a)
+
+## 5. [Defender for Cloud in Defender portal (preview)](https://learn.microsoft.com/en-us/azure/defender-for-cloud/defender-portal/defender-for-cloud-defender-portal)
+
+### 5.1. [Enable preview features](https://learn.microsoft.com/en-us/azure/defender-for-cloud/defender-portal/enable-preview-features)
+
+![](https://github.com/user-attachments/assets/24102065-00b5-449c-a301-5af31cddd44d)
+
+![](https://github.com/user-attachments/assets/05b94cdb-f292-45c9-8412-a464a1f69890)
+
+![](https://github.com/user-attachments/assets/f57f01c9-1343-444d-82b6-241c555887ff)
+
+![](https://github.com/user-attachments/assets/6307ea9f-5afc-4abc-a84c-77b47b6037c2)
