@@ -10,11 +10,11 @@
 
 ![](https://github.com/user-attachments/assets/05a94c4c-e37e-4259-9103-c690419152c7)
 
-|Permission||
+|API|Permission|
 |---|---|
-|`ThreatHunting.Read.All`|![](https://github.com/user-attachments/assets/c09626a8-0358-45df-a264-1dac70a9a664)|
-|`SecurityAlert.Read.All`|![](https://github.com/user-attachments/assets/88626ce4-1ef6-41d9-b618-222ddb6ebc5c)|
-|`SecurityIncident.Read.All`|![](https://github.com/user-attachments/assets/3f798396-fd52-4297-909b-0e0fda9622c7)|
+|[Run hunting query](https://learn.microsoft.com/en-us/graph/api/security-security-runhuntingquery)|`ThreatHunting.Read.All`<br>![](https://github.com/user-attachments/assets/c09626a8-0358-45df-a264-1dac70a9a664)|
+|[List alerts](https://learn.microsoft.com/en-us/graph/api/security-list-alerts_v2)|`SecurityAlert.Read.All`<br>![](https://github.com/user-attachments/assets/88626ce4-1ef6-41d9-b618-222ddb6ebc5c)|
+|[List incidents](https://learn.microsoft.com/en-us/graph/api/security-list-incidents)|`SecurityIncident.Read.All`<br>![](https://github.com/user-attachments/assets/3f798396-fd52-4297-909b-0e0fda9622c7)|
 
 ![](https://github.com/user-attachments/assets/a26b6eeb-10f4-474c-a739-7bc97ea1e8d4)
 
