@@ -65,3 +65,13 @@ PS C:\Users\tanjoe> Invoke-RestMethod $endpointuri -Method Post -Headers $header
 --------------                                                                          ------
 https://graph.microsoft.com/v1.0/$metadata#microsoft.graph.security.huntingQueryResults {@{name=TenantId; type=String}, @{name=TimeGenerated; type=DateTime}, @{name=IncidentName; type=String}, @{name=Titl...
 ```
+
+## 3. Create product
+
+![](https://github.com/user-attachments/assets/bcd8f01a-84a5-4b40-bb9a-06dc80174ca4)
+
+## 4. Create MCP server
+
+![](https://github.com/user-attachments/assets/3eecfcac-d9ca-4e15-90b5-c91e87c38c08)
+
+![](https://github.com/user-attachments/assets/09d6d1a6-1cfb-4497-bc84-7f86923c2c7e)
