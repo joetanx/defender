@@ -75,3 +75,5 @@ https://graph.microsoft.com/v1.0/$metadata#microsoft.graph.security.huntingQuery
 ![](https://github.com/user-attachments/assets/3eecfcac-d9ca-4e15-90b5-c91e87c38c08)
 
 ![](https://github.com/user-attachments/assets/09d6d1a6-1cfb-4497-bc84-7f86923c2c7e)
+
+![](https://github.com/user-attachments/assets/601cd6e3-9ef6-4ce5-b6cd-7a6471551178)
