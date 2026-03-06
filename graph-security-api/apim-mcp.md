@@ -1,4 +1,4 @@
-## 1. Create Azure API managegement services
+## 1. Create Azure API management service
 
 > [!Note]
 >
@@ -348,6 +348,14 @@ Data [JSON formatted](https://jsonformatter.org/):
 
 ## 5. Using the MCP server in Foundry agent
 
+![](https://github.com/user-attachments/assets/b0b7c249-beea-4d95-af78-15353b3644dd)
+
 ![](https://github.com/user-attachments/assets/601cd6e3-9ef6-4ce5-b6cd-7a6471551178)
 
 ![](https://github.com/user-attachments/assets/241bd004-578b-48c2-ab13-41616ceeff98)
+
+![](https://github.com/user-attachments/assets/25aa6769-9737-4558-9314-3d92e745708d)
+
+![](https://github.com/user-attachments/assets/9e78cfe9-421d-42f7-8a79-dd8f642f944f)
+
+![](https://github.com/user-attachments/assets/c7bc277a-998e-40c8-9de9-72ef4ad77551)
