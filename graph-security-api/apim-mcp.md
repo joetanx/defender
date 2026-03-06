@@ -141,7 +141,212 @@ https://graph.microsoft.com/v1.0/$metadata#microsoft.graph.security.huntingQuery
 
 ![](https://github.com/user-attachments/assets/3eecfcac-d9ca-4e15-90b5-c91e87c38c08)
 
-![](https://github.com/user-attachments/assets/13c8f81d-e7b3-4654-a351-328b983c944a)
+![](https://github.com/user-attachments/assets/88e143e5-2ba4-4f5e-a3a8-91888b6a6f8d)
+
+### 4.1. Test MCP server
+
+#### 4.1.1. initialize
+
+```sh
+json=$(cat << EOF
+{
+  "method": "initialize",
+  "params": {
+    "clientInfo": {
+      "version": "1.0.0",
+      "name": "test-client"
+    },
+    "protocolVersion": "2025-03-26",
+    "capabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    }
+  },
+  "id": 1,
+  "jsonrpc": "2.0"
+}
+EOF
+)
+curl https://alpha-a18d6b52.azure-api.net/ms-security/mcp -H "Content-Type: application/json" -d "$json"
+```
+
+Response:
+
+```
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"Azure API Management","version":"1.0.0"}}}
+
+event: close
+data:
+```
+
+Data [JSON formatted](https://jsonformatter.org/):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": "2025-03-26",
+    "capabilities": {
+      "tools": {
+        "listChanged": true
+      }
+    },
+    "serverInfo": {
+      "name": "Azure API Management",
+      "version": "1.0.0"
+    }
+  }
+}
+```
+
+#### 4.1.2. tools/list
+
+```sh
+json=$(cat << EOF
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/list",
+  "params": {}
+}
+EOF
+)
+curl https://alpha-a18d6b52.azure-api.net/ms-security/mcp -H "Content-Type: application/json" -d "$json"
+```
+
+Response:
+
+```
+event: message
+data: {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"getIncidentById","description":"Get an incident using the incident ID. Consider using the list-incident tool with \u0060$filter\u0060 for \u0060id\u0060 and \u0060$expand\u0060 parameters instead to get an incident **with** associated alerts.","inputSchema":{"type":"object","properties":{"incidentId":{"type":"string","description":"The ID of the incident"}},"required":["incidentId"],"additionalProperties":false}},{"name":"listAlerts","description":"Gets a list of alerts in Defender XDR, most recent alerts are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, \u0060serviceSource\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027new\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"listIncidents","description":"Gets a list of incidents in Defender XDR, most recent incidents are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060determination\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027active\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$expand":{"type":"string","description":"Set to \u0060alerts\u0060 to include the alerts related to each incident in the result; omit if alerts are not needed."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"runHuntingQuery","description":"Run an advanced hunting query using KQL across supported Defender tables to search security data.","inputSchema":{"type":"object","properties":{"huntingQueryBody":{"type":"object","properties":{"Query":{"type":"string","description":"KQL query to execute"},"Timespan":{"type":"string","description":"ISO8601 duration (e.g., P7D) or omit to filter in KQL"}},"required":["Query","Timespan"],"additionalProperties":false}},"required":["huntingQueryBody"],"additionalProperties":false}}]}}
+
+event: close
+data:
+```
+
+Data [JSON formatted](https://jsonformatter.org/):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "tools": [
+      {
+        "name": "getIncidentById",
+        "description": "Get an incident using the incident ID. Consider using the list-incident tool with `$filter` for `id` and `$expand` parameters instead to get an incident **with** associated alerts.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "incidentId": {
+              "type": "string",
+              "description": "The ID of the incident"
+            }
+          },
+          "required": [
+            "incidentId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "listAlerts",
+        "description": "Gets a list of alerts in Defender XDR, most recent alerts are on top. Provide OData query parameters to filter response.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "$top": {
+              "type": "string",
+              "description": "Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items."
+            },
+            "$filter": {
+              "type": "string",
+              "description": "Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `lastUpdateDateTime`, `severity`, `serviceSource`, and `status`. Example: `status eq 'new' and createdDateTime ge 2026-03-01T23:559:59Z`."
+            },
+            "$count": {
+              "type": "string",
+              "description": "Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response."
+            },
+            "$skip": {
+              "type": "string",
+              "description": "Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "listIncidents",
+        "description": "Gets a list of incidents in Defender XDR, most recent incidents are on top. Provide OData query parameters to filter response.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "$top": {
+              "type": "string",
+              "description": "Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items."
+            },
+            "$filter": {
+              "type": "string",
+              "description": "Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `determination`, `lastUpdateDateTime`, `severity`, and `status`. Example: `status eq 'active' and createdDateTime ge 2026-03-01T23:559:59Z`."
+            },
+            "$expand": {
+              "type": "string",
+              "description": "Set to `alerts` to include the alerts related to each incident in the result; omit if alerts are not needed."
+            },
+            "$count": {
+              "type": "string",
+              "description": "Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response."
+            },
+            "$skip": {
+              "type": "string",
+              "description": "Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "runHuntingQuery",
+        "description": "Run an advanced hunting query using KQL across supported Defender tables to search security data.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "huntingQueryBody": {
+              "type": "object",
+              "properties": {
+                "Query": {
+                  "type": "string",
+                  "description": "KQL query to execute"
+                },
+                "Timespan": {
+                  "type": "string",
+                  "description": "ISO8601 duration (e.g., P7D) or omit to filter in KQL"
+                }
+              },
+              "required": [
+                "Query",
+                "Timespan"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "huntingQueryBody"
+          ],
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}
+```
+
+## 5. Using the MCP server in Foundry agent
 
 ![](https://github.com/user-attachments/assets/601cd6e3-9ef6-4ce5-b6cd-7a6471551178)
 
