@@ -34,36 +34,103 @@ Graph API is already authentication protected via Entra, there's no need for `Su
 >
 > It is also possible to use wildcard operation to just passthrough everything
 
-#### List alerts
+#### 2.1.1. List alerts
 
-![](https://github.com/user-attachments/assets/955a9da4-135e-4b23-8cb1-67da9ee6a87c)
+Description: _Gets a list of alerts in Defender XDR, most recent alerts are on top. Provide OData query parameters to filter response._
 
-#### List incidents
+Query parameters:
 
-![](https://github.com/user-attachments/assets/dafef238-f9da-4865-a0a9-431466f66320)
+|Name|Description|Type|
+|---|---|---|
+|`$count`|Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response.|boolean|
+|`$filter`|Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `lastUpdateDateTime`, `severity`, `serviceSource`, and `status`. Example: `status eq 'new' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
+|`$skip`|Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest.|integer|
+|`$top`|Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items.|integer|
 
-#### Get incident
+![](https://github.com/user-attachments/assets/3b7d1b34-555f-4b6f-a277-770a7b580a6b)
 
-![](https://github.com/user-attachments/assets/8c532c43-d226-476e-b54d-c0c9c930f8ff)
+#### 2.1.2. List incidents
 
-#### Run hunting query
+Description: _Gets a list of incidents in Defender XDR, most recent incidents are on top. Provide OData query parameters to filter response._
 
-![](https://github.com/user-attachments/assets/34cd511a-0e1b-4c4e-8b64-5861f1d9eb0e)
+Query parameters:
+
+|Name|Description|Type|
+|---|---|---|
+|`$count`|Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response.|boolean|
+|`$filter`|Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `lastUpdateDateTime`, `severity`, `serviceSource`, and `status`. Example: `status eq 'new' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
+|`$skip`|Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest.|integer|
+|`$top`|Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items.|integer|
+|`$expand`|Set to `alerts` to include the alerts related to each incident in the result; omit if alerts are not needed.|string|
+
+![](https://github.com/user-attachments/assets/4fb1ff1f-6366-4f44-8830-6b576858606e)
+
+#### 2.1.3. Get incident by ID
+
+Description: _Get an incident using the incident ID. Consider using the list-incident tool with `$filter` for `id` and `$expand` parameters instead to get an incident **with** associated alerts._
+
+![](https://github.com/user-attachments/assets/a5721fff-4e2c-46d3-8ad6-2a925869ecb9)
+
+#### 2.1.4. Run hunting query
+
+Description: _Run an advanced hunting query using KQL across supported Defender tables to search security data._
+
+![](https://github.com/user-attachments/assets/18fc77f8-fc29-4f39-bc1c-a3570e102c49)
+
+##### Request
+
+Body description: Provide JSON object with 2 parameters: `Query` (**Required**) and `Timespan` (_Optional_)
+
+##### Representation
+
+Content type: `application/json`
+
+Sample:
+
+```json
+{
+  "Query":  "workspace('alpha-soc').Syslog | where SyslogMessage contains 'failed password'",
+  "Timespan":  "P7D"
+}
+```
+
+Definition:
+
+```json
+{
+    "type": "object",
+    "properties": {
+        "Query": {
+            "type": "string",
+            "description": "KQL query to execute"
+        },
+        "Timespan": {
+            "type": "string",
+            "description": "ISO8601 duration (e.g., P7D) or omit to filter in KQL"
+        }
+    },
+    "required": [
+        "Query"
+    ]
+}
+```
+
+![](https://github.com/user-attachments/assets/50964d3d-bb05-45ee-997a-12c6ee06500b)
 
 ### 2.2. Test access
 
 ```pwsh
 PS C:\Users\tanjoe> $headers = @{ Authorization='Bearer '+$token.access_token }
-PS C:\Users\tanjoe> $endpointuri='https://alpha-a18d6b52.azure-api.net/v1.0/security/runHuntingQuery'
+PS C:\Users\tanjoe> $endpointuri='https://alpha-a18d6b52.azure-api.net/security/runHuntingQuery'
 PS C:\Users\tanjoe> $body=@{
->>   Query = 'SecurityIncident'
+>>   Query = "workspace('alpha-soc').Syslog | where SyslogMessage contains 'failed password'"
 >>   Timespan = 'P3D'
 >> }
 PS C:\Users\tanjoe> Invoke-RestMethod $endpointuri -Method Post -Headers $headers -Body $($body | ConvertTo-Json) -ContentType 'application/json'
 
-@odata.context                                                                          schema
---------------                                                                          ------
-https://graph.microsoft.com/v1.0/$metadata#microsoft.graph.security.huntingQueryResults {@{name=TenantId; type=String}, @{name=TimeGenerated; type=DateTime}, @{name=IncidentName; type=String}, @{name=Titl...
+@odata.context                                                                          schema                                                                                                                               results
+--------------                                                                          ------                                                                                                                               -------
+https://graph.microsoft.com/v1.0/$metadata#microsoft.graph.security.huntingQueryResults {@{name=TenantId; type=String}, @{name=SourceSystem; type=String}, @{name=TimeGenerated; type=DateTime}, @{name=MG; type=String}...} {@{TenantId=5bc2e6fa-f7ac-4f50-8c88-da5a3ddd6e56; SourceSystem=LogsIngestionAPI; TimeGenerated=2026-03-04T00:26:03.4989771Z; MG=; Computer=alpha-vm-langflow; EventTime=2026-03-04T00:25:27.2899965Z; ...
 ```
 
 ## 3. Create product
