@@ -73,9 +73,9 @@ Description: _Get an incident using the incident ID. Consider using the list-inc
 
 #### 2.1.4. Run hunting query
 
-Description: _Run an advanced hunting query using KQL across supported Defender tables to search security data._
+Description: _Run an advanced hunting query using KQL on Defender tables and Sentinel workspaces to search security data._
 
-![](https://github.com/user-attachments/assets/18fc77f8-fc29-4f39-bc1c-a3570e102c49)
+![](https://github.com/user-attachments/assets/a106ce75-6f80-45b3-9c05-530f53647575)
 
 ##### Request
 
