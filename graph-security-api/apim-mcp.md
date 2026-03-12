@@ -352,9 +352,19 @@ Data [JSON formatted](https://jsonformatter.org/):
 
 ### 5.1. Using with authorization code flow
 
+#### 5.1.1. Client app and permissions
+
+Auth code flow requires a client app and uses delegated permission to act on behalf of the user
+
+![](https://github.com/user-attachments/assets/6cf04b77-15f6-4737-ae52-e5b5e4335397)
+
+#### 5.1.2. Foundry tool configuration
+
 ![](https://github.com/user-attachments/assets/563afd3d-36fe-4994-92d4-5cac14621132)
 
 ![](https://github.com/user-attachments/assets/698179fb-151c-44d5-8b95-3058fd8e3796)
+
+#### 5.1.3. Using tool in agent
 
 ![](https://github.com/user-attachments/assets/a613ee99-e8c6-46fa-85b5-286d73a98087)
 
@@ -370,6 +380,25 @@ Data [JSON formatted](https://jsonformatter.org/):
 
 ### 5.2. Using with agent identity
 
+- All unpublished or in-development agents within the same project share a common identity. (read: [Shared project identity](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/agent-identity?tabs=rest-api#shared-project-identity))
+- Publishing an agent automatically creates a dedicated agent identity blueprint and agent identity. (read: [Distinct agent identity](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/agent-identity?tabs=rest-api#distinct-agent-identity))
+
+#### 5.2.1. Agent identity and permissions
+
+Agents in Foundry uses the autonomous agent flow, agent identity uses application permission to perform actions:
+- [Official doc](https://learn.microsoft.com/en-us/entra/agent-id/identity-platform/agent-autonomous-app-oauth-flow)
+- [Write-up on agent identity flows](https://github.com/joetanx/mslab/blob/main/entra/agent-id/auth-flows.md)
+
+Permissions are granted to the agent identity using graph API:
+- [official doc](https://learn.microsoft.com/en-us/entra/agent-id/identity-platform/autonomous-agent-request-authorization-entra-admin)
+- [Write-up on granting application permissions to agent identity](https://github.com/joetanx/mslab/blob/main/entra/agent-id/permissions-and-consent.md#53-grant-a-list-of-application-permissions-to-agent-identity)
+
+![](https://github.com/user-attachments/assets/c5bd38fc-d9e0-4d67-a3ac-8f5984c63c39)
+
+![](https://github.com/user-attachments/assets/4743baee-0921-4c43-bae9-dcdc36352cbb)
+
+#### 5.2.2. Foundry tool configuration
+
 ![](https://github.com/user-attachments/assets/774e0d32-ca0b-4d09-81e0-71491e809657)
 
 > [!Important]
@@ -383,6 +412,8 @@ Data [JSON formatted](https://jsonformatter.org/):
 > The hint of why the agent fail is seen from another _not-very-descriptive_ resource not found error in the service principal sign-in logs:
 > 
 > ![](https://github.com/user-attachments/assets/4f6a5f7f-adf2-4dab-a63b-113ed2eab47c)
+
+#### 5.2.3. Using tool in agent
 
 ![](https://github.com/user-attachments/assets/f2bbae39-0538-48bf-85b8-a8c07b410e90)
 
