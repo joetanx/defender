@@ -348,7 +348,15 @@ Data [JSON formatted](https://jsonformatter.org/):
 
 ## 5. Using the MCP server in Foundry agent
 
-![](https://github.com/user-attachments/assets/b0b7c249-beea-4d95-af78-15353b3644dd)
+![](https://github.com/user-attachments/assets/af709b3a-0f2a-4cc4-b8fc-3e2f385da7ef)
+
+### 5.1. Using with authorization code flow
+
+![](https://github.com/user-attachments/assets/563afd3d-36fe-4994-92d4-5cac14621132)
+
+![](https://github.com/user-attachments/assets/698179fb-151c-44d5-8b95-3058fd8e3796)
+
+![](https://github.com/user-attachments/assets/a613ee99-e8c6-46fa-85b5-286d73a98087)
 
 ![](https://github.com/user-attachments/assets/601cd6e3-9ef6-4ce5-b6cd-7a6471551178)
 
@@ -356,6 +364,33 @@ Data [JSON formatted](https://jsonformatter.org/):
 
 ![](https://github.com/user-attachments/assets/25aa6769-9737-4558-9314-3d92e745708d)
 
-![](https://github.com/user-attachments/assets/9e78cfe9-421d-42f7-8a79-dd8f642f944f)
+![](https://github.com/user-attachments/assets/a7e54f8b-a9f1-4e6d-8855-8ec13c0fa29d)
 
-![](https://github.com/user-attachments/assets/c7bc277a-998e-40c8-9de9-72ef4ad77551)
+![](https://github.com/user-attachments/assets/41da5901-47ec-4dad-ab1d-42ceb54daeb2)
+
+### 5.2. Using with agent identity
+
+![](https://github.com/user-attachments/assets/774e0d32-ca0b-4d09-81e0-71491e809657)
+
+> [!Important]
+> 
+> The scope should not include the `.default` path (e.g. `https://graph.microsoft.com/.default`)
+>
+> If the scope if invalid, the agent fails with a _not-very-descriptive_ timeout error:
+> 
+> ![](https://github.com/user-attachments/assets/62ee55ce-69c9-4d4e-9918-261badf58556)
+>
+> The hint of why the agent fail is seen from another _not-very-descriptive_ resource not found error in the service principal sign-in logs:
+> 
+> ![](https://github.com/user-attachments/assets/4f6a5f7f-adf2-4dab-a63b-113ed2eab47c)
+
+![](https://github.com/user-attachments/assets/f2bbae39-0538-48bf-85b8-a8c07b410e90)
+
+![](https://github.com/user-attachments/assets/e0ba23f8-9274-46be-ac0d-acc765baeead)
+
+Notice the non-deterministic nature of the agent:
+- The auth-code example output showed only active incidents, but the agent identity example output showed all incidents
+- This is unrelated to the authentication method
+- Inspect the response from the MCP tool with the `Logs` function
+
+![](https://github.com/user-attachments/assets/b062a8cf-8505-4068-8d35-e2924c273828)
