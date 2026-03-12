@@ -388,9 +388,11 @@ Data [JSON formatted](https://jsonformatter.org/):
 
 ![](https://github.com/user-attachments/assets/e0ba23f8-9274-46be-ac0d-acc765baeead)
 
-Notice the non-deterministic nature of the agent:
-- The auth-code example output showed only active incidents, but the agent identity example output showed all incidents
-- This is unrelated to the authentication method
-- Inspect the response from the MCP tool with the `Logs` function
-
-![](https://github.com/user-attachments/assets/b062a8cf-8505-4068-8d35-e2924c273828)
+> [!Note]
+>
+> Notice the non-deterministic nature of agents:
+> - The auth-code example output showed only active incidents, but the agent identity example output showed all incidents
+> - This is unrelated to the authentication method
+> - Inspect the response from the MCP tool with the `Logs` function to verify what was the raw data retrieved
+>
+> ![](https://github.com/user-attachments/assets/b062a8cf-8505-4068-8d35-e2924c273828)
