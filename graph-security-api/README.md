@@ -13,8 +13,10 @@
 |API|Permission|
 |---|---|
 |[Run hunting query](https://learn.microsoft.com/en-us/graph/api/security-security-runhuntingquery)|`ThreatHunting.Read.All`<br>![](https://github.com/user-attachments/assets/c09626a8-0358-45df-a264-1dac70a9a664)|
-|[List alerts](https://learn.microsoft.com/en-us/graph/api/security-list-alerts_v2)|`SecurityAlert.Read.All`<br>![](https://github.com/user-attachments/assets/88626ce4-1ef6-41d9-b618-222ddb6ebc5c)|
-|[List incidents](https://learn.microsoft.com/en-us/graph/api/security-list-incidents)<br>[Get incidents](https://learn.microsoft.com/en-us/graph/api/security-incident-get)|`SecurityIncident.Read.All`<br>![](https://github.com/user-attachments/assets/3f798396-fd52-4297-909b-0e0fda9622c7)|
+|• [List alerts](https://learn.microsoft.com/en-us/graph/api/security-list-alerts_v2)<br>• [Get alert](https://learn.microsoft.com/en-us/graph/api/security-alert-get)|`SecurityAlert.Read.All`<br>![](https://github.com/user-attachments/assets/88626ce4-1ef6-41d9-b618-222ddb6ebc5c)|
+|• [Update alert](https://learn.microsoft.com/en-us/graph/api/security-alert-update)<br>• [Create comment for alert](https://learn.microsoft.com/en-us/graph/api/security-alert-post-comments)|`SecurityAlert.ReadWrite.All`<br>![](https://github.com/user-attachments/assets/b974b0de-df6a-4428-b0ad-a8ce26578ffd)|
+|• [List incidents](https://learn.microsoft.com/en-us/graph/api/security-list-incidents)<br>• [Get incidents](https://learn.microsoft.com/en-us/graph/api/security-incident-get)|`SecurityIncident.Read.All`<br>![](https://github.com/user-attachments/assets/3f798396-fd52-4297-909b-0e0fda9622c7)|
+|• [Update incident](https://learn.microsoft.com/en-us/graph/api/security-incident-update)<br>• [Create comment for incident](https://learn.microsoft.com/en-us/graph/api/security-incident-post-comments)|`SecurityIncident.ReadWrite.All`<br>![](https://github.com/user-attachments/assets/8234d4cd-8a7d-4f4f-beea-9bcae74d35a1)|
 
 ![](https://github.com/user-attachments/assets/a26b6eeb-10f4-474c-a739-7bc97ea1e8d4)
 
