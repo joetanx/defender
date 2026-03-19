@@ -28,7 +28,7 @@ Graph API is already authentication protected via Entra, there's no need for `Su
 
 ![](https://github.com/user-attachments/assets/5eef0813-ac09-45e3-98d7-64ac79bdee20)
 
-### 2.1. Create body definitions
+### 2.1. Create definitions
 
 #### 2.1.1. Comment
 
@@ -301,7 +301,7 @@ Representation:
 |---|---|---|
 |`application/json`|<pre><code>{ "Query": "workspace('alpha-soc').Syslog \| where SyslogMessage contains 'failed password'", "Timespan": "P7D"}</pre></code>|[huntingQuery](#214-hunting-query)|
 
-### 2.2. Test access
+### 2.3. Test access
 
 ```pwsh
 PS C:\Users\tanjoe> $headers = @{ Authorization='Bearer '+$token.access_token }
