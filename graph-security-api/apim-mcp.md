@@ -28,73 +28,98 @@ Graph API is already authentication protected via Entra, there's no need for `Su
 
 ![](https://github.com/user-attachments/assets/5eef0813-ac09-45e3-98d7-64ac79bdee20)
 
-### 2.1. Add requires APIs to operations
+### 2.1. Create body definitions
 
-> [!Note]
->
-> It is also possible to use wildcard operation to just passthrough everything
+#### 2.1.1. Comment
 
-#### 2.1.1. List alerts
-
-Description: _Gets a list of alerts in Defender XDR, most recent alerts are on top. Provide OData query parameters to filter response._
-
-Query parameters:
-
-|Name|Description|Type|
-|---|---|---|
-|`$count`|Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response.|boolean|
-|`$filter`|Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `lastUpdateDateTime`, `severity`, `serviceSource`, and `status`. Example: `status eq 'new' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
-|`$skip`|Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest.|integer|
-|`$top`|Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items.|integer|
-
-![](https://github.com/user-attachments/assets/3b7d1b34-555f-4b6f-a277-770a7b580a6b)
-
-#### 2.1.2. List incidents
-
-Description: _Gets a list of incidents in Defender XDR, most recent incidents are on top. Provide OData query parameters to filter response._
-
-Query parameters:
-
-|Name|Description|Type|
-|---|---|---|
-|`$count`|Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response.|boolean|
-|`$filter`|Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `lastUpdateDateTime`, `severity`, `serviceSource`, and `status`. Example: `status eq 'new' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
-|`$skip`|Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest.|integer|
-|`$top`|Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items.|integer|
-|`$expand`|Set to `alerts` to include the alerts related to each incident in the result; omit if alerts are not needed.|string|
-
-![](https://github.com/user-attachments/assets/4fb1ff1f-6366-4f44-8830-6b576858606e)
-
-#### 2.1.3. Get incident by ID
-
-Description: _Get an incident using the incident ID. Consider using the list-incident tool with `$filter` for `id` and `$expand` parameters instead to get an incident **with** associated alerts._
-
-![](https://github.com/user-attachments/assets/a5721fff-4e2c-46d3-8ad6-2a925869ecb9)
-
-#### 2.1.4. Run hunting query
-
-Description: _Run an advanced hunting query using KQL on Defender tables and Sentinel workspaces to search security data._
-
-![](https://github.com/user-attachments/assets/a106ce75-6f80-45b3-9c05-530f53647575)
-
-##### Request
-
-Body description: Provide JSON object with 2 parameters: `Query` (**Required**) and `Timespan` (_Optional_)
-
-##### Representation
-
-Content type: `application/json`
-
-Sample:
+Used by:
+- [Create comment for alert](#222-create-comment-for-alert)
+- [Create comment for incident](#226-create-comment-for-incident)
 
 ```json
 {
-  "Query":  "workspace('alpha-soc').Syslog | where SyslogMessage contains 'failed password'",
-  "Timespan":  "P7D"
+    "type": "object",
+    "properties": {
+        "comment": {
+            "type": "string",
+            "description": "The comment to be added."
+        }
+    },
+    "required": [ "comment" ]
 }
 ```
 
-Definition:
+![](https://github.com/user-attachments/assets/dbd97bde-c0fc-486d-b725-75bb5ed0044f)
+
+#### 2.1.2. Alert properties
+
+Used by: [Update alert](#223-update-alert)
+
+```json
+{
+    "type": "object",
+    "properties": {
+        "status": {
+            "type": "string",
+            "description": "The status of the alert. The possible values are: `new`, `inProgress`, `resolved`, `unknownFutureValue`."
+        },
+        "classification": {
+            "type": "string",
+            "description": "Specifies the classification of the alert. The possible values are: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+        },
+        "determination": {
+            "type": "string",
+            "description": "Specifies the determination of the alert. The possible values are: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedUser`, `phishing`, `maliciousUserActivity`, `clean`, `insufficientData`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
+        },
+        "assignedTo": {
+            "type": "string",
+            "description": "Owner of the incident, or `null` if no owner is assigned."
+        }
+    },
+    "required": [ "" ]
+}
+```
+
+![](https://github.com/user-attachments/assets/20cb665c-13d9-4702-9843-2f782504e4d6)
+
+#### 2.1.3. Incident properties
+
+Used by: [Update incident](#227-update-incident)
+
+```json
+{
+    "type": "object",
+    "properties": {
+        "status": {
+            "type": "string",
+            "description": "The status of the incident; possible values: `active`, `resolved`, `redirected`, `unknownFutureValue`."
+        },
+        "classification": {
+            "type": "string",
+            "description": "Specifies the classification of the incident; pssible values: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+        },
+        "determination": {
+            "type": "string",
+            "description": "Specifies the determination of the incident; possible values: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedAccount`, `phishing`, `maliciousUserActivity`, `notMalicious`, `notEnoughDataToValidate`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
+        },
+        "assignedTo": {
+            "type": "string",
+            "description": "Owner of the incident; `null` if not specified."
+        },
+        "resolvingComment": {
+            "type": "string",
+            "description": "Comment to explain the resolution of the incident and the classification choice."
+        }
+    },
+    "required": [ "" ]
+}
+```
+
+![](https://github.com/user-attachments/assets/2e7e3165-e633-493d-a8a4-e085d166b700)
+
+#### 2.1.4. Hunting query
+
+Used by: [Run hunting query](#228-run-hunting-query)
 
 ```json
 {
@@ -109,13 +134,172 @@ Definition:
             "description": "ISO8601 duration (e.g., P7D) or omit to filter in KQL"
         }
     },
-    "required": [
-        "Query"
-    ]
+    "required": [ "Query" ]
 }
 ```
 
-![](https://github.com/user-attachments/assets/50964d3d-bb05-45ee-997a-12c6ee06500b)
+![](https://github.com/user-attachments/assets/a5e4d474-1559-4402-a88b-83eee3fefa87)
+
+### 2.2. Add requires APIs to operations
+
+> [!Note]
+>
+> It is also possible to use wildcard operation to just passthrough everything
+
+#### 2.2.1. List alerts
+
+Description: _Gets a list of alerts in Defender XDR, most recent alerts are on top. Provide OData query parameters to filter response._
+
+Query parameters:
+
+|Name|Description|Type|
+|---|---|---|
+|`$count`|Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response.|boolean|
+|`$filter`|Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `lastUpdateDateTime`, `severity`, `serviceSource`, and `status`. Example: `status eq 'new' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
+|`$skip`|Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest.|integer|
+|`$top`|Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items.|integer|
+
+![](https://github.com/user-attachments/assets/ee3f5722-523c-46db-8bbe-866e6a4977e9)
+
+#### 2.2.2. Create comment for alert
+
+Description: _Add a comment to an alert._
+
+Template (URL) parameter:
+
+|Name|Description|Type|
+|---|---|---|
+|`alertId`|ID of the intended alert; use `id`, not `providerAlertId` from list tools results.|string|
+
+![](https://github.com/user-attachments/assets/a91d6052-d1f4-4b25-9fdc-bfbb77d6e5d3)
+
+##### Request
+
+Body description: Provide JSON object with 1 parameter: `comment` (**Required**)
+
+Representation:
+
+|Content type|Sample|Definition|
+|---|---|---|
+|`application/json`|<pre><code>{ "comment": "IP address reputation found suspicious" }</pre></code>|[comment](#211-comment)|
+
+![](https://github.com/user-attachments/assets/4f89612b-c08c-49a6-83d1-d04cdeacbc0d)
+
+#### 2.2.3. Update alert
+
+Description: _Update the properties of an alert._
+
+Template (URL) parameter:
+
+|Name|Description|Type|
+|---|---|---|
+|`alertId`|ID of the intended alert; use `id`, not `providerAlertId` from list tools results.|string|
+
+![](https://github.com/user-attachments/assets/fdc8fa92-8c92-47cd-9149-28ec94656de0)
+
+##### Request
+
+Body description: Provide JSON object with 4 parameters: `status`, `classification`, `determination` and `assignedTo` (ALL _Optional_)
+
+Representation:
+
+|Content type|Sample|Definition|
+|---|---|---|
+|`application/json`|<pre><code>{ "status": "resolved", "classification": "informationalExpectedActivity", "determination": "securityTesting", "assignedTo": "tanjoe@MngEnvMCAP398230.onmicrosoft.com" }</pre></code>|[alertProperties](#212-alert-properties)|
+
+![](https://github.com/user-attachments/assets/bb15d60a-3aa9-40a6-a29e-4aa119d43705)
+
+#### 2.2.4. List incidents
+
+Description: _Gets a list of incidents in Defender XDR, most recent incidents are on top. Provide OData query parameters to filter response._
+
+Query parameters:
+
+|Name|Description|Type|
+|---|---|---|
+|`$count`|Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response.|boolean|
+|`$filter`|Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `lastUpdateDateTime`, `severity`, `serviceSource`, and `status`. Example: `status eq 'new' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
+|`$skip`|Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest.|integer|
+|`$top`|Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items.|integer|
+|`$expand`|Set to `alerts` to include the alerts related to each incident in the result; omit if alerts are not needed.|string|
+
+![](https://github.com/user-attachments/assets/a664c0a3-9748-49e1-a911-63a06af862bb)
+
+#### 2.2.5. Get incident by ID
+
+Description: _Get an incident using the incident ID. Consider using the list-incident tool with `$filter` for `id` and `$expand` parameters instead to get an incident **with** associated alerts._
+
+Template (URL) parameter:
+
+|Name|Description|Type|
+|---|---|---|
+|`incidentId`|ID of the intended incident.|integer|
+
+![](https://github.com/user-attachments/assets/c9269470-c0da-4868-9bac-478ae48bce3a)
+
+#### 2.2.6. Create comment for incident
+
+Description: _Add a comment to an incident._
+
+Template (URL) parameter:
+
+|Name|Description|Type|
+|---|---|---|
+|`incidentId`|ID of the intended incident.|integer|
+
+![](https://github.com/user-attachments/assets/55a30022-5b47-41fc-8845-7bbc5849f666)
+
+##### Request
+
+Body description: Provide JSON object with 1 parameter: `comment` (**Required**)
+
+Representation:
+
+|Content type|Sample|Definition|
+|---|---|---|
+|`application/json`|<pre><code>{ "comment": "To be escalated, one or more entities found suspicious" }</pre></code>|[comment](#211-comment)|
+
+![](https://github.com/user-attachments/assets/0bbcd755-8bf0-4777-a803-ae2e1ee8a034)
+
+#### 2.2.7. Update incident
+
+Description: _Update the properties of an incident._
+
+Template (URL) parameter:
+
+|Name|Description|Type|
+|---|---|---|
+|`incidentId`|ID of the intended incident.|integer|
+
+![](https://github.com/user-attachments/assets/76b71239-8828-4423-b648-6afd3b52267d)
+
+##### Request
+
+Body description: Provide JSON object with 5 parameters: `status`, `classification`, `determination`, `assignedTo` and `resolvingComment` (ALL _Optional_)
+
+Representation:
+
+|Content type|Sample|Definition|
+|---|---|---|
+|`application/json`|<pre><code>{ "status": "inProgress", "classification": "truePositive", "determination": "apt", "assignedTo": "tanjoe@MngEnvMCAP398230.onmicrosoft.com", "resolvingComment": "To be escalated, one or more entities found suspicious" }</pre></code>|[incidentProperties](#213-incident-properties)|
+
+![](https://github.com/user-attachments/assets/9e8d9715-9572-4304-a887-215e0027c7ad)
+
+#### 2.2.8. Run hunting query
+
+Description: _Run an advanced hunting query using KQL on Defender tables and Sentinel workspaces to search security data._
+
+![](https://github.com/user-attachments/assets/441baf9b-209d-45f4-a0cc-a5825e3964e5)
+
+##### Request
+
+Body description: Provide JSON object with 2 parameters: `Query` (**Required**) and `Timespan` (_Optional_)
+
+Representation:
+
+|Content type|Sample|Definition|
+|---|---|---|
+|`application/json`|<pre><code>{ "Query": "workspace('alpha-soc').Syslog \| where SyslogMessage contains 'failed password'", "Timespan": "P7D"}</pre></code>|[huntingQuery](#214-hunting-query)|
 
 ### 2.2. Test access
 
@@ -221,13 +405,13 @@ Response:
 
 ```
 event: message
-data: {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"getIncidentById","description":"Get an incident using the incident ID. Consider using the list-incident tool with \u0060$filter\u0060 for \u0060id\u0060 and \u0060$expand\u0060 parameters instead to get an incident **with** associated alerts.","inputSchema":{"type":"object","properties":{"incidentId":{"type":"string","description":"The ID of the incident"}},"required":["incidentId"],"additionalProperties":false}},{"name":"listAlerts","description":"Gets a list of alerts in Defender XDR, most recent alerts are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, \u0060serviceSource\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027new\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"listIncidents","description":"Gets a list of incidents in Defender XDR, most recent incidents are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060determination\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027active\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$expand":{"type":"string","description":"Set to \u0060alerts\u0060 to include the alerts related to each incident in the result; omit if alerts are not needed."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"runHuntingQuery","description":"Run an advanced hunting query using KQL on Defender tables and Sentinel workspaces to search security data.","inputSchema":{"type":"object","properties":{"huntingQueryBody":{"type":"object","properties":{"Query":{"type":"string","description":"KQL query to execute"},"Timespan":{"type":"string","description":"ISO8601 duration (e.g., P7D) or omit to filter in KQL"}},"required":["Query","Timespan"],"additionalProperties":false}},"required":["huntingQueryBody"],"additionalProperties":false}}]}}
+data: {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"getIncidentById","description":"Get an incident using the incident ID. Consider using the list-incident tool with \u0060$filter\u0060 for \u0060id\u0060 and \u0060$expand\u0060 parameters instead to get an incident **with** associated alerts.","inputSchema":{"type":"object","properties":{"incidentId":{"type":"string","description":"ID of the intended incident."}},"required":["incidentId"],"additionalProperties":false}},{"name":"listAlerts","description":"Gets a list of alerts in Defender XDR, most recent alerts are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, \u0060serviceSource\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027new\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"listIncidents","description":"Gets a list of incidents in Defender XDR, most recent incidents are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060determination\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027active\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$expand":{"type":"string","description":"Set to \u0060alerts\u0060 to include the alerts related to each incident in the result; omit if alerts are not needed."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"runHuntingQuery","description":"Run an advanced hunting query using KQL on Defender tables and Sentinel workspaces to search security data.","inputSchema":{"type":"object","properties":{"huntingQuery":{"type":"object","properties":{"Query":{"type":"string","description":"KQL query to execute"},"Timespan":{"type":"string","description":"ISO8601 duration (e.g., P7D) or omit to filter in KQL"}},"required":["Query","Timespan"],"additionalProperties":false}},"required":["huntingQuery"],"additionalProperties":false}},{"name":"createCommentForAlert","description":"Add a comment to an alert.","inputSchema":{"type":"object","properties":{"comment":{"type":"object","properties":{"comment":{"type":"string","description":"The comment to be added."}},"required":["comment"],"additionalProperties":false},"alertId":{"type":"string","description":"ID of the intended alert; use \u0060id\u0060, not \u0060providerAlertId\u0060 from list tools results."}},"required":["alertId","comment"],"additionalProperties":false}},{"name":"createCommentForIncident","description":"Add a comment to an incident.","inputSchema":{"type":"object","properties":{"comment":{"type":"object","properties":{"comment":{"type":"string","description":"The comment to be added."}},"required":["comment"],"additionalProperties":false},"incidentId":{"type":"string","description":"ID of the intended incident."}},"required":["incidentId","comment"],"additionalProperties":false}},{"name":"updateAlert","description":"Update the properties of an alert.","inputSchema":{"type":"object","properties":{"alertId":{"type":"string","description":"ID of the intended alert; use \u0060id\u0060, not \u0060providerAlertId\u0060 from list tools results."},"alertProperties":{"type":"object","properties":{"classification":{"type":"string","description":"Specifies the classification of the alert. The possible values are: \u0060unknown\u0060, \u0060falsePositive\u0060, \u0060truePositive\u0060, \u0060informationalExpectedActivity\u0060, \u0060unknownFutureValue\u0060."},"determination":{"type":"string","description":"Specifies the determination of the alert. The possible values are: \u0060unknown\u0060, \u0060apt\u0060, \u0060malware\u0060, \u0060securityPersonnel\u0060, \u0060securityTesting\u0060, \u0060unwantedSoftware\u0060, \u0060other\u0060, \u0060multiStagedAttack\u0060, \u0060compromisedUser\u0060, \u0060phishing\u0060, \u0060maliciousUserActivity\u0060, \u0060clean\u0060, \u0060insufficientData\u0060, \u0060confirmedUserActivity\u0060, \u0060lineOfBusinessApplication\u0060, \u0060unknownFutureValue\u0060."},"assignedTo":{"type":"string","description":"Owner of the incident, or \u0060null\u0060 if no owner is assigned."},"status":{"type":"string","description":"The status of the alert. The possible values are: \u0060new\u0060, \u0060inProgress\u0060, \u0060resolved\u0060, \u0060unknownFutureValue\u0060."}},"required":["status","classification","determination","assignedTo"],"additionalProperties":false}},"required":["alertId","alertProperties"],"additionalProperties":false}},{"name":"updateIncident","description":"Update the properties of an incident.","inputSchema":{"type":"object","properties":{"incidentId":{"type":"string","description":"ID of the intended incident."},"incidentProperties":{"type":"object","properties":{"classification":{"type":"string","description":"Specifies the classification of the incident; pssible values: \u0060unknown\u0060, \u0060falsePositive\u0060, \u0060truePositive\u0060, \u0060informationalExpectedActivity\u0060, \u0060unknownFutureValue\u0060."},"determination":{"type":"string","description":"Specifies the determination of the incident; possible values: \u0060unknown\u0060, \u0060apt\u0060, \u0060malware\u0060, \u0060securityPersonnel\u0060, \u0060securityTesting\u0060, \u0060unwantedSoftware\u0060, \u0060other\u0060, \u0060multiStagedAttack\u0060, \u0060compromisedAccount\u0060, \u0060phishing\u0060, \u0060maliciousUserActivity\u0060, \u0060notMalicious\u0060, \u0060notEnoughDataToValidate\u0060, \u0060confirmedUserActivity\u0060, \u0060lineOfBusinessApplication\u0060, \u0060unknownFutureValue\u0060."},"assignedTo":{"type":"string","description":"Owner of the incident; \u0060null\u0060 if not specified."},"resolvingComment":{"type":"string","description":"Comment to explain the resolution of the incident and the classification choice."},"status":{"type":"string","description":"The status of the incident; possible values: \u0060active\u0060, \u0060resolved\u0060, \u0060redirected\u0060, \u0060unknownFutureValue\u0060."}},"required":["status","classification","determination","assignedTo","resolvingComment"],"additionalProperties":false}},"required":["incidentId","incidentProperties"],"additionalProperties":false}}]}}
 
 event: close
 data:
 ```
 
-Data [JSON formatted](https://jsonformatter.org/):
+<details><summary>Data <a href="https://jsonformatter.org/">JSON formatted</a>:</summary>
 
 ```json
 {
@@ -243,7 +427,7 @@ Data [JSON formatted](https://jsonformatter.org/):
           "properties": {
             "incidentId": {
               "type": "string",
-              "description": "The ID of the incident"
+              "description": "ID of the intended incident."
             }
           },
           "required": [
@@ -316,7 +500,7 @@ Data [JSON formatted](https://jsonformatter.org/):
         "inputSchema": {
           "type": "object",
           "properties": {
-            "huntingQueryBody": {
+            "huntingQuery": {
               "type": "object",
               "properties": {
                 "Query": {
@@ -336,7 +520,166 @@ Data [JSON formatted](https://jsonformatter.org/):
             }
           },
           "required": [
-            "huntingQueryBody"
+            "huntingQuery"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "createCommentForAlert",
+        "description": "Add a comment to an alert.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "comment": {
+              "type": "object",
+              "properties": {
+                "comment": {
+                  "type": "string",
+                  "description": "The comment to be added."
+                }
+              },
+              "required": [
+                "comment"
+              ],
+              "additionalProperties": false
+            },
+            "alertId": {
+              "type": "string",
+              "description": "ID of the intended alert; use `id`, not `providerAlertId` from list tools results."
+            }
+          },
+          "required": [
+            "alertId",
+            "comment"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "createCommentForIncident",
+        "description": "Add a comment to an incident.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "comment": {
+              "type": "object",
+              "properties": {
+                "comment": {
+                  "type": "string",
+                  "description": "The comment to be added."
+                }
+              },
+              "required": [
+                "comment"
+              ],
+              "additionalProperties": false
+            },
+            "incidentId": {
+              "type": "string",
+              "description": "ID of the intended incident."
+            }
+          },
+          "required": [
+            "incidentId",
+            "comment"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "updateAlert",
+        "description": "Update the properties of an alert.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "alertId": {
+              "type": "string",
+              "description": "ID of the intended alert; use `id`, not `providerAlertId` from list tools results."
+            },
+            "alertProperties": {
+              "type": "object",
+              "properties": {
+                "classification": {
+                  "type": "string",
+                  "description": "Specifies the classification of the alert. The possible values are: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+                },
+                "determination": {
+                  "type": "string",
+                  "description": "Specifies the determination of the alert. The possible values are: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedUser`, `phishing`, `maliciousUserActivity`, `clean`, `insufficientData`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
+                },
+                "assignedTo": {
+                  "type": "string",
+                  "description": "Owner of the incident, or `null` if no owner is assigned."
+                },
+                "status": {
+                  "type": "string",
+                  "description": "The status of the alert. The possible values are: `new`, `inProgress`, `resolved`, `unknownFutureValue`."
+                }
+              },
+              "required": [
+                "status",
+                "classification",
+                "determination",
+                "assignedTo"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "alertId",
+            "alertProperties"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "updateIncident",
+        "description": "Update the properties of an incident.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "incidentId": {
+              "type": "string",
+              "description": "ID of the intended incident."
+            },
+            "incidentProperties": {
+              "type": "object",
+              "properties": {
+                "classification": {
+                  "type": "string",
+                  "description": "Specifies the classification of the incident; pssible values: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+                },
+                "determination": {
+                  "type": "string",
+                  "description": "Specifies the determination of the incident; possible values: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedAccount`, `phishing`, `maliciousUserActivity`, `notMalicious`, `notEnoughDataToValidate`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
+                },
+                "assignedTo": {
+                  "type": "string",
+                  "description": "Owner of the incident; `null` if not specified."
+                },
+                "resolvingComment": {
+                  "type": "string",
+                  "description": "Comment to explain the resolution of the incident and the classification choice."
+                },
+                "status": {
+                  "type": "string",
+                  "description": "The status of the incident; possible values: `active`, `resolved`, `redirected`, `unknownFutureValue`."
+                }
+              },
+              "required": [
+                "status",
+                "classification",
+                "determination",
+                "assignedTo",
+                "resolvingComment"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "incidentId",
+            "incidentProperties"
           ],
           "additionalProperties": false
         }
@@ -345,6 +688,8 @@ Data [JSON formatted](https://jsonformatter.org/):
   }
 }
 ```
+
+</details>
 
 ## 5. Using the MCP server in Foundry agent
 
