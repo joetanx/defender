@@ -140,7 +140,7 @@ Used by: [Run hunting query](#228-run-hunting-query)
 
 ![](https://github.com/user-attachments/assets/a5e4d474-1559-4402-a88b-83eee3fefa87)
 
-### 2.2. Add requires APIs to operations
+### 2.2. Create operations
 
 > [!Note]
 >
