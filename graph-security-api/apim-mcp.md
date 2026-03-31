@@ -61,26 +61,26 @@ Used by: [Update alert](#223-update-alert)
     "properties": {
         "status": {
             "type": "string",
-            "description": "The status of the alert; possible values: `new`, `inProgress`, `resolved`, `unknownFutureValue`."
+            "description": "Alert status; options: `new`, `inProgress`, `resolved`"
         },
         "classification": {
             "type": "string",
-            "description": "Specifies the classification of the alert; possible values: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+            "description": "Alert judgement; options: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`"
         },
         "determination": {
             "type": "string",
-            "description": "Specifies the determination of the alert; possible values: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedUser`, `phishing`, `maliciousUserActivity`, `clean`, `insufficientData`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
+            "description": "Details to alert classification; options: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedUser`, `phishing`, `maliciousUserActivity`, `clean`, `insufficientData`, `confirmedUserActivity`, `lineOfBusinessApplication`"
         },
         "assignedTo": {
             "type": "string",
-            "description": "Owner of the incident, or `null` if no owner is assigned."
+            "description": "Alert owner: can be group name or user principal name; `null` if not specified"
         }
     },
     "required": [ "" ]
 }
 ```
 
-![](https://github.com/user-attachments/assets/02133a81-ba23-4aff-9e3a-4b4dcbc9e09e)
+![](https://github.com/user-attachments/assets/f5a50f4a-6924-4b7c-bb36-4fd1f3386fb2)
 
 #### 2.1.3. Incident properties
 
@@ -92,19 +92,19 @@ Used by: [Update incident](#227-update-incident)
     "properties": {
         "status": {
             "type": "string",
-            "description": "The status of the incident; possible values: `active`, `inProgress`, `resolved`, `redirected`, `unknownFutureValue`."
+            "description": "Incident status; options: `active`, `resolved`, `redirected`"
         },
         "classification": {
             "type": "string",
-            "description": "Specifies the classification of the incident; possible values: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+            "description": "Incident judgement; options: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`"
         },
         "determination": {
             "type": "string",
-            "description": "Specifies the determination of the incident; possible values: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedAccount`, `phishing`, `maliciousUserActivity`, `notMalicious`, `notEnoughDataToValidate`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
+            "description": "Details to incident classification; options: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedAccount`, `phishing`, `maliciousUserActivity`, `notMalicious`, `notEnoughDataToValidate`, `confirmedUserActivity`, `lineOfBusinessApplication`"
         },
         "assignedTo": {
             "type": "string",
-            "description": "Owner of the incident; `null` if not specified."
+            "description": "Incident owner: can be group name or user principal name; `null` if not specified"
         },
         "resolvingComment": {
             "type": "string",
@@ -115,7 +115,7 @@ Used by: [Update incident](#227-update-incident)
 }
 ```
 
-![](https://github.com/user-attachments/assets/0d9e62d9-21c8-4280-b7e7-055d9ac14807)
+![](https://github.com/user-attachments/assets/57b371cd-101d-4b2b-bce1-2dec0f346260)
 
 #### 2.1.4. Hunting query
 
@@ -405,7 +405,7 @@ Response:
 
 ```
 event: message
-data: {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"getIncidentById","description":"Get an incident using the incident ID. Consider using the list-incident tool with \u0060$filter\u0060 for \u0060id\u0060 and \u0060$expand\u0060 parameters instead to get an incident **with** associated alerts.","inputSchema":{"type":"object","properties":{"incidentId":{"type":"string","description":"ID of the intended incident."}},"required":["incidentId"],"additionalProperties":false}},{"name":"listAlerts","description":"Gets a list of alerts in Defender XDR, most recent alerts are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, \u0060serviceSource\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027new\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"listIncidents","description":"Gets a list of incidents in Defender XDR, most recent incidents are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060determination\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027active\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$expand":{"type":"string","description":"Set to \u0060alerts\u0060 to include the alerts related to each incident in the result; omit if alerts are not needed."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"runHuntingQuery","description":"Run an advanced hunting query using KQL on Defender tables and Sentinel workspaces to search security data.","inputSchema":{"type":"object","properties":{"huntingQuery":{"type":"object","properties":{"Query":{"type":"string","description":"KQL query to execute"},"Timespan":{"type":"string","description":"ISO8601 duration (e.g., P7D) or omit to filter in KQL"}},"required":["Query","Timespan"],"additionalProperties":false}},"required":["huntingQuery"],"additionalProperties":false}},{"name":"createCommentForAlert","description":"Add a comment to an alert.","inputSchema":{"type":"object","properties":{"comment":{"type":"object","properties":{"comment":{"type":"string","description":"The comment to be added."}},"required":["comment"],"additionalProperties":false},"alertId":{"type":"string","description":"ID of the intended alert; use \u0060id\u0060, not \u0060providerAlertId\u0060 from list tools results."}},"required":["alertId","comment"],"additionalProperties":false}},{"name":"createCommentForIncident","description":"Add a comment to an incident.","inputSchema":{"type":"object","properties":{"comment":{"type":"object","properties":{"comment":{"type":"string","description":"The comment to be added."}},"required":["comment"],"additionalProperties":false},"incidentId":{"type":"string","description":"ID of the intended incident."}},"required":["incidentId","comment"],"additionalProperties":false}},{"name":"updateAlert","description":"Update the properties of an alert.","inputSchema":{"type":"object","properties":{"alertId":{"type":"string","description":"ID of the intended alert; use \u0060id\u0060, not \u0060providerAlertId\u0060 from list tools results."},"alertProperties":{"type":"object","properties":{"classification":{"type":"string","description":"Specifies the classification of the alert. The possible values are: \u0060unknown\u0060, \u0060falsePositive\u0060, \u0060truePositive\u0060, \u0060informationalExpectedActivity\u0060, \u0060unknownFutureValue\u0060."},"determination":{"type":"string","description":"Specifies the determination of the alert. The possible values are: \u0060unknown\u0060, \u0060apt\u0060, \u0060malware\u0060, \u0060securityPersonnel\u0060, \u0060securityTesting\u0060, \u0060unwantedSoftware\u0060, \u0060other\u0060, \u0060multiStagedAttack\u0060, \u0060compromisedUser\u0060, \u0060phishing\u0060, \u0060maliciousUserActivity\u0060, \u0060clean\u0060, \u0060insufficientData\u0060, \u0060confirmedUserActivity\u0060, \u0060lineOfBusinessApplication\u0060, \u0060unknownFutureValue\u0060."},"assignedTo":{"type":"string","description":"Owner of the incident, or \u0060null\u0060 if no owner is assigned."},"status":{"type":"string","description":"The status of the alert. The possible values are: \u0060new\u0060, \u0060inProgress\u0060, \u0060resolved\u0060, \u0060unknownFutureValue\u0060."}},"required":["status","classification","determination","assignedTo"],"additionalProperties":false}},"required":["alertId","alertProperties"],"additionalProperties":false}},{"name":"updateIncident","description":"Update the properties of an incident.","inputSchema":{"type":"object","properties":{"incidentId":{"type":"string","description":"ID of the intended incident."},"incidentProperties":{"type":"object","properties":{"classification":{"type":"string","description":"Specifies the classification of the incident; pssible values: \u0060unknown\u0060, \u0060falsePositive\u0060, \u0060truePositive\u0060, \u0060informationalExpectedActivity\u0060, \u0060unknownFutureValue\u0060."},"determination":{"type":"string","description":"Specifies the determination of the incident; possible values: \u0060unknown\u0060, \u0060apt\u0060, \u0060malware\u0060, \u0060securityPersonnel\u0060, \u0060securityTesting\u0060, \u0060unwantedSoftware\u0060, \u0060other\u0060, \u0060multiStagedAttack\u0060, \u0060compromisedAccount\u0060, \u0060phishing\u0060, \u0060maliciousUserActivity\u0060, \u0060notMalicious\u0060, \u0060notEnoughDataToValidate\u0060, \u0060confirmedUserActivity\u0060, \u0060lineOfBusinessApplication\u0060, \u0060unknownFutureValue\u0060."},"assignedTo":{"type":"string","description":"Owner of the incident; \u0060null\u0060 if not specified."},"resolvingComment":{"type":"string","description":"Comment to explain the resolution of the incident and the classification choice."},"status":{"type":"string","description":"The status of the incident; possible values: \u0060active\u0060, \u0060resolved\u0060, \u0060redirected\u0060, \u0060unknownFutureValue\u0060."}},"required":["status","classification","determination","assignedTo","resolvingComment"],"additionalProperties":false}},"required":["incidentId","incidentProperties"],"additionalProperties":false}}]}}
+data: {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"getIncidentById","description":"Get an incident using the incident ID. Consider using the list-incident tool with \u0060$filter\u0060 for \u0060id\u0060 and \u0060$expand\u0060 parameters instead to get an incident **with** associated alerts.","inputSchema":{"type":"object","properties":{"incidentId":{"type":"string","description":"ID of the intended incident."}},"required":["incidentId"],"additionalProperties":false}},{"name":"listAlerts","description":"Gets a list of alerts in Defender XDR, most recent alerts are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, \u0060serviceSource\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027new\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"listIncidents","description":"Gets a list of incidents in Defender XDR, most recent incidents are on top. Provide OData query parameters to filter response.","inputSchema":{"type":"object","properties":{"$top":{"type":"string","description":"Limits the number of items returned in the response. Example: set to \u006010\u0060 returns only the first 5 items."},"$filter":{"type":"string","description":"Filters the collection based on Boolean conditions. Supports comparison operators (\u0060eq\u0060, \u0060ne\u0060, \u0060gt\u0060, \u0060lt\u0060), logical operators (\u0060and\u0060, \u0060or\u0060, \u0060not\u0060), and functions (\u0060startsWith\u0060, \u0060endsWith\u0060, \u0060contains\u0060). \u0060$filter\u0060 supports the following properties: \u0060assignedTo\u0060, \u0060classification\u0060, \u0060createdDateTime\u0060, \u0060determination\u0060, \u0060lastUpdateDateTime\u0060, \u0060severity\u0060, and \u0060status\u0060. Example: \u0060status eq \u0027active\u0027 and createdDateTime ge 2026-03-01T23:559:59Z\u0060."},"$expand":{"type":"string","description":"Set to \u0060alerts\u0060 to include the alerts related to each incident in the result; omit if alerts are not needed."},"$count":{"type":"string","description":"Returns the total count of items in a collection alongside the results. Set to \u0060true\u0060 to include the count in the response."},"$skip":{"type":"string","description":"Skips a specified number of items in the result set. Useful for pagination. Example: set to \u006010\u0060 skips the first 10 items and returns the rest."}},"required":[],"additionalProperties":false}},{"name":"runHuntingQuery","description":"Run an advanced hunting query using KQL on Defender tables and Sentinel workspaces to search security data.","inputSchema":{"type":"object","properties":{"huntingQuery":{"type":"object","properties":{"Query":{"type":"string","description":"KQL query to execute"},"Timespan":{"type":"string","description":"ISO8601 duration (e.g., P7D) or omit to filter in KQL"}},"required":["Query","Timespan"],"additionalProperties":false}},"required":["huntingQuery"],"additionalProperties":false}},{"name":"createCommentForAlert","description":"Add a comment to an alert.","inputSchema":{"type":"object","properties":{"comment":{"type":"object","properties":{"comment":{"type":"string","description":"The comment to be added."}},"required":["comment"],"additionalProperties":false},"alertId":{"type":"string","description":"ID of the intended alert; use \u0060id\u0060, not \u0060providerAlertId\u0060 from list tools results."}},"required":["alertId","comment"],"additionalProperties":false}},{"name":"createCommentForIncident","description":"Add a comment to an incident.","inputSchema":{"type":"object","properties":{"comment":{"type":"object","properties":{"comment":{"type":"string","description":"The comment to be added."}},"required":["comment"],"additionalProperties":false},"incidentId":{"type":"string","description":"ID of the intended incident."}},"required":["incidentId","comment"],"additionalProperties":false}},{"name":"updateAlert","description":"Update the properties of an alert.","inputSchema":{"type":"object","properties":{"alertId":{"type":"string","description":"ID of the intended alert; use \u0060id\u0060, not \u0060providerAlertId\u0060 from list tools results."},"alertProperties":{"type":"object","properties":{"classification":{"type":"string","description":"Alert judgement; options: \u0060unknown\u0060, \u0060falsePositive\u0060, \u0060truePositive\u0060, \u0060informationalExpectedActivity\u0060"},"determination":{"type":"string","description":"Details to alert classification; options: \u0060unknown\u0060, \u0060apt\u0060, \u0060malware\u0060, \u0060securityPersonnel\u0060, \u0060securityTesting\u0060, \u0060unwantedSoftware\u0060, \u0060other\u0060, \u0060multiStagedAttack\u0060, \u0060compromisedUser\u0060, \u0060phishing\u0060, \u0060maliciousUserActivity\u0060, \u0060clean\u0060, \u0060insufficientData\u0060, \u0060confirmedUserActivity\u0060, \u0060lineOfBusinessApplication\u0060"},"assignedTo":{"type":"string","description":"Alert owner: can be group name or user principal name; \u0060null\u0060 if not specified"},"status":{"type":"string","description":"Alert status; options: \u0060new\u0060, \u0060inProgress\u0060, \u0060resolved\u0060"}},"required":["status","classification","determination","assignedTo"],"additionalProperties":false}},"required":["alertId","alertProperties"],"additionalProperties":false}},{"name":"updateIncident","description":"Update the properties of an incident.","inputSchema":{"type":"object","properties":{"incidentId":{"type":"string","description":"ID of the intended incident."},"incidentProperties":{"type":"object","properties":{"classification":{"type":"string","description":"Incident judgement; options: \u0060unknown\u0060, \u0060falsePositive\u0060, \u0060truePositive\u0060, \u0060informationalExpectedActivity\u0060"},"determination":{"type":"string","description":"Details to incident classification; options: \u0060unknown\u0060, \u0060apt\u0060, \u0060malware\u0060, \u0060securityPersonnel\u0060, \u0060securityTesting\u0060, \u0060unwantedSoftware\u0060, \u0060other\u0060, \u0060multiStagedAttack\u0060, \u0060compromisedAccount\u0060, \u0060phishing\u0060, \u0060maliciousUserActivity\u0060, \u0060notMalicious\u0060, \u0060notEnoughDataToValidate\u0060, \u0060confirmedUserActivity\u0060, \u0060lineOfBusinessApplication\u0060"},"assignedTo":{"type":"string","description":"Incident owner: can be group name or user principal name; \u0060null\u0060 if not specified"},"resolvingComment":{"type":"string","description":"Comment to explain the resolution of the incident and the classification choice."},"status":{"type":"string","description":"Incident status; options: \u0060active\u0060, \u0060resolved\u0060, \u0060redirected\u0060"}},"required":["status","classification","determination","assignedTo","resolvingComment"],"additionalProperties":false}},"required":["incidentId","incidentProperties"],"additionalProperties":false}}]}}
 
 event: close
 data:
@@ -602,19 +602,19 @@ data:
               "properties": {
                 "classification": {
                   "type": "string",
-                  "description": "Specifies the classification of the alert. The possible values are: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+                  "description": "Alert judgement; options: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`"
                 },
                 "determination": {
                   "type": "string",
-                  "description": "Specifies the determination of the alert. The possible values are: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedUser`, `phishing`, `maliciousUserActivity`, `clean`, `insufficientData`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
+                  "description": "Details to alert classification; options: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedUser`, `phishing`, `maliciousUserActivity`, `clean`, `insufficientData`, `confirmedUserActivity`, `lineOfBusinessApplication`"
                 },
                 "assignedTo": {
                   "type": "string",
-                  "description": "Owner of the incident, or `null` if no owner is assigned."
+                  "description": "Alert owner: can be group name or user principal name; `null` if not specified"
                 },
                 "status": {
                   "type": "string",
-                  "description": "The status of the alert. The possible values are: `new`, `inProgress`, `resolved`, `unknownFutureValue`."
+                  "description": "Alert status; options: `new`, `inProgress`, `resolved`"
                 }
               },
               "required": [
@@ -648,15 +648,15 @@ data:
               "properties": {
                 "classification": {
                   "type": "string",
-                  "description": "Specifies the classification of the incident; pssible values: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+                  "description": "Incident judgement; options: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`"
                 },
                 "determination": {
                   "type": "string",
-                  "description": "Specifies the determination of the incident; possible values: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedAccount`, `phishing`, `maliciousUserActivity`, `notMalicious`, `notEnoughDataToValidate`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
+                  "description": "Details to incident classification; options: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedAccount`, `phishing`, `maliciousUserActivity`, `notMalicious`, `notEnoughDataToValidate`, `confirmedUserActivity`, `lineOfBusinessApplication`"
                 },
                 "assignedTo": {
                   "type": "string",
-                  "description": "Owner of the incident; `null` if not specified."
+                  "description": "Incident owner: can be group name or user principal name; `null` if not specified"
                 },
                 "resolvingComment": {
                   "type": "string",
@@ -664,7 +664,7 @@ data:
                 },
                 "status": {
                   "type": "string",
-                  "description": "The status of the incident; possible values: `active`, `resolved`, `redirected`, `unknownFutureValue`."
+                  "description": "Incident status; options: `active`, `resolved`, `redirected`"
                 }
               },
               "required": [
