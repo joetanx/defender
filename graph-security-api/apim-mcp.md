@@ -61,15 +61,15 @@ Used by: [Update alert](#223-update-alert)
     "properties": {
         "status": {
             "type": "string",
-            "description": "The status of the alert. The possible values are: `new`, `inProgress`, `resolved`, `unknownFutureValue`."
+            "description": "The status of the alert; possible values: `new`, `inProgress`, `resolved`, `unknownFutureValue`."
         },
         "classification": {
             "type": "string",
-            "description": "Specifies the classification of the alert. The possible values are: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+            "description": "Specifies the classification of the alert; possible values: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
         },
         "determination": {
             "type": "string",
-            "description": "Specifies the determination of the alert. The possible values are: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedUser`, `phishing`, `maliciousUserActivity`, `clean`, `insufficientData`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
+            "description": "Specifies the determination of the alert; possible values: `unknown`, `apt`, `malware`, `securityPersonnel`, `securityTesting`, `unwantedSoftware`, `other`, `multiStagedAttack`, `compromisedUser`, `phishing`, `maliciousUserActivity`, `clean`, `insufficientData`, `confirmedUserActivity`, `lineOfBusinessApplication`, `unknownFutureValue`."
         },
         "assignedTo": {
             "type": "string",
@@ -80,7 +80,7 @@ Used by: [Update alert](#223-update-alert)
 }
 ```
 
-![](https://github.com/user-attachments/assets/20cb665c-13d9-4702-9843-2f782504e4d6)
+![](https://github.com/user-attachments/assets/02133a81-ba23-4aff-9e3a-4b4dcbc9e09e)
 
 #### 2.1.3. Incident properties
 
@@ -92,11 +92,11 @@ Used by: [Update incident](#227-update-incident)
     "properties": {
         "status": {
             "type": "string",
-            "description": "The status of the incident; possible values: `active`, `resolved`, `redirected`, `unknownFutureValue`."
+            "description": "The status of the incident; possible values: `active`, `inProgress`, `resolved`, `redirected`, `unknownFutureValue`."
         },
         "classification": {
             "type": "string",
-            "description": "Specifies the classification of the incident; pssible values: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
+            "description": "Specifies the classification of the incident; possible values: `unknown`, `falsePositive`, `truePositive`, `informationalExpectedActivity`, `unknownFutureValue`."
         },
         "determination": {
             "type": "string",
@@ -115,7 +115,7 @@ Used by: [Update incident](#227-update-incident)
 }
 ```
 
-![](https://github.com/user-attachments/assets/2e7e3165-e633-493d-a8a4-e085d166b700)
+![](https://github.com/user-attachments/assets/0d9e62d9-21c8-4280-b7e7-055d9ac14807)
 
 #### 2.1.4. Hunting query
 
