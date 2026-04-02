@@ -27,7 +27,7 @@
 
 ### Instructions (System Prompt) the Agent Should Be Given
 
-```
+```md
 You are a Tier 1 SOC analyst responsible for triaging security incidents in Microsoft Defender XDR.
 Your goal is to investigate every incident thoroughly and take a definitive action — resolve false
 positives, escalate true threats to Tier 2, or close informational noise.
@@ -152,16 +152,6 @@ Add one new environment variable: **`TIER2_GROUP`** — the `assignedTo` value f
 > - sequential workflow: https://learn.microsoft.com/en-us/agent-framework/workflows/orchestrations/sequential?pivots=programming-language-python
 > - concurrent workflow: https://learn.microsoft.com/en-us/agent-framework/workflows/orchestrations/concurrent?pivots=programming-language-python
 > - agent skills: https://learn.microsoft.com/en-us/agent-framework/agents/skills?pivots=programming-language-python
-
-
-
-Fetched 3 resources
-
-Now I have full context on the framework. Let me update the plan with a concrete recommendation on both questions. 
-
-Updated memory file [](file:///c%3A/Users/Eisen/AppData/Roaming/Code/User/workspaceStorage/ab2836732d83ab6760687d85c9eccb28/GitHub.copilot-chat/memory-tool/memories/MzQwNTVmMjYtMTRjZC00ZGU1LWI4NjQtMjJlNzA5ZWQ5ZmI5/plan.md)
-
-Here's the analysis and updated plan:
 
 ## Architecture Decision: Hybrid Sequential + Concurrent Fan-out
 
