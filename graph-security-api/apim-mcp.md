@@ -155,7 +155,7 @@ Query parameters:
 |Name|Description|Type|
 |---|---|---|
 |`$count`|Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response.|boolean|
-|`$filter`|Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `lastUpdateDateTime`, `severity`, `serviceSource`, and `status`. Example: `status eq 'new' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
+|`$filter`|Filters the collection based on boolean conditions. Supports comparison (`eq`, `ne`, `gt`, `lt`) and logical (`and`, `or`, `not`) operators. Example: `status eq 'new' and id eq 'sne19883b1-90ed-44af-b25a-bc50b41e7bd4' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
 |`$skip`|Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest.|integer|
 |`$top`|Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items.|integer|
 
@@ -218,7 +218,7 @@ Query parameters:
 |Name|Description|Type|
 |---|---|---|
 |`$count`|Returns the total count of items in a collection alongside the results. Set to `true` to include the count in the response.|boolean|
-|`$filter`|Filters the collection based on Boolean conditions. Supports comparison operators (`eq`, `ne`, `gt`, `lt`), logical operators (`and`, `or`, `not`), and functions (`startsWith`, `endsWith`, `contains`). `$filter` supports the following properties: `assignedTo`, `classification`, `createdDateTime`, `lastUpdateDateTime`, `severity`, `serviceSource`, and `status`. Example: `status eq 'new' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
+|`$filter`|Filters the collection based on boolean conditions. Supports comparison (`eq`, `ne`, `gt`, `lt`) and logical (`and`, `or`, `not`) operators. Example: `status eq 'active' and id eq '123456' and createdDateTime ge 2026-03-01T23:559:59Z`.|string|
 |`$skip`|Skips a specified number of items in the result set. Useful for pagination. Example: set to `10` skips the first 10 items and returns the rest.|integer|
 |`$top`|Limits the number of items returned in the response. Example: set to `10` returns only the first 5 items.|integer|
 |`$expand`|Set to `alerts` to include the alerts related to each incident in the result; omit if alerts are not needed.|string|
