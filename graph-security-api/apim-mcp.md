@@ -92,7 +92,7 @@ Used by: [Update incident](#227-update-incident)
     "properties": {
         "status": {
             "type": "string",
-            "description": "Incident status; options: `active`, `resolved`, `redirected`"
+            "description": "Incident status; options: `active`, `inProgress`, `resolved`, `redirected`"
         },
         "classification": {
             "type": "string",
@@ -664,7 +664,7 @@ data:
                 },
                 "status": {
                   "type": "string",
-                  "description": "Incident status; options: `active`, `resolved`, `redirected`"
+                  "description": "Incident status; options: `active`, `inProgress`, `resolved`, `redirected`"
                 }
               },
               "required": [
