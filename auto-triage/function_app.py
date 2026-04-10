@@ -54,40 +54,40 @@ instructions = {
     output: concise report of query results, or say no results if none found""",
   "windows_signin": """
     input: JSON object containing entity values extracted from a security incident
-    purpose: if hostname entity exists, find Windows sign-in events related to the observed entities, otherwise skip this step
-    task: use `runHuntingQuery` tool, substituting all entity values into the has_any filter
+    purpose: if hostname or user entity exists, find Windows sign-in failures related to the observed entities, otherwise skip this step
+    task: use `runHuntingQuery` tool; include only the has_any filters for entity types that are present in the input
     query: ```
       SecurityEvent
       | where EventID == 4625
-      | where Computer has_any (<comma-separated hostname values>) [or Account has_any (<comma-separated user values>)]
+      | where Computer has_any (<comma-separated hostname values>) or Account has_any (<comma-separated user values>)
       | project TimeGenerated, Account, AccountType, Computer, EventSourceName, EventID, Activity
       | top 10 by TimeGenerated desc```
     timespan: e.g. P7D, P30D
-    output: concise report of query results, or say no results if none found""",
+    output: concise report of query results, or say no results if none found; if the incident overview suggests a login-related incident, note whether the results appear to be the triggering events rather than additional related activity""",
   "linux_signin": """
     input: JSON object containing entity values extracted from a security incident
-    purpose: if hostname entity exists, find Linux sign-in events related to the observed entities, otherwise skip this step
-    task: use `runHuntingQuery` tool, substituting all entity values into the has_any filter
+    purpose: if hostname or user entity exists, find Linux sign-in failures related to the observed entities, otherwise skip this step
+    task: use `runHuntingQuery` tool; include only the has_any filters for entity types that are present in the input
     query: ```
       Syslog
       | where Facility in ('auth', 'authpriv') and ProcessName =~ 'sshd' and SyslogMessage contains 'failed password'
-      | where HostName has_any (<comma-separated hostname values>) [or SyslogMessage has_any (<comma-separated user values>)]
+      | where HostName has_any (<comma-separated hostname values>) or SyslogMessage has_any (<comma-separated user values>)
       | project TimeGenerated, Computer, SyslogMessage
       | top 10 by TimeGenerated desc```
     timespan: e.g. P7D, P30D
-    output: concise report of query results, or say no results if none found""",
+    output: concise report of query results, or say no results if none found; if the incident overview suggests a login-related incident, note whether the results appear to be the triggering events rather than additional related activity""",
   "entra_signin": """
     input: JSON object containing entity values extracted from a security incident
-    purpose: if user entity exists, find Entra sign-in events related to the observed entities, otherwise skip this step
-    task: use `runHuntingQuery` tool, substituting all entity values into the has_any filter
+    purpose: if user or UPN entity exists, find Entra sign-in failures related to the observed entities, otherwise skip this step
+    task: use `runHuntingQuery` tool; include only the has_any filters for entity types that are present in the input
     query: ```
       SigninLogs
       | where ResultSignature == 'FAILURE'
-      | where Identity has_any (<comma-separated user values>) [or UserPrincipalName has_any (<comma-separated upn values>)]
+      | where Identity has_any (<comma-separated user values>) or UserPrincipalName has_any (<comma-separated upn values>)
       | project TimeGenerated, Identity, UserPrincipalName, ResultDescription, IPAddress
       | top 10 by TimeGenerated desc```
     timespan: e.g. P7D, P30D
-    output: concise report of query results, or say no results if none found""",
+    output: concise report of query results, or say no results if none found; if the incident overview suggests a login-related incident, note whether the results appear to be the triggering events rather than additional related activity""",
   "assessment": f"""
     input: aggregated hunting results and incident context in JSON format
     purpose: classify the security incident based on all available evidence and update the incident accordingly
