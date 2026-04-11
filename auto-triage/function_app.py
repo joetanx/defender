@@ -36,10 +36,9 @@ instructions = {
     query: ```
       SecurityAlert
       | where parse_json(ExtendedProperties).IncidentId != <incident_id> and Entities has_any (<comma-separated values from all entity lists>)
-      | project TimeGenerated, AlertName, Description, ProviderName, ProductName, Status, CompromisedEntity, Entities
-      | top 10 by TimeGenerated desc```
-    timespan: e.g. P7D, P30D
-    output: concise report of query results, or say no results if none found""",
+      | summarize count() by AlertName, Description, ProviderName, ProductName, Status, CompromisedEntity```
+    timespan: e.g. P3D, P7D
+    output: concise report of query results, also use `createCommentForIncident` with (`Related alerts hunt: <report>`)""",
   "threat_intel": """
     input: JSON object containing entity values extracted from a security incident
     purpose: find threat intelligence indicators related to the observed entities
@@ -50,48 +49,44 @@ instructions = {
       | project Modified, ObservableKey, ObservableValue, IsActive, Confidence
       | summarize arg_max(Modified, *) by ObservableValue```
     timespan: e.g. P7D, P30D
-    account: use `createCommentForIncident` with incident ID to note if any matches found
-    output: concise report of query results, or say no results if none found""",
+    output: concise report of query results, also use `createCommentForIncident` with (`Threat intel hunt: <report>`)""",
   "windows_signin": """
     input: JSON object containing entity values extracted from a security incident
-    purpose: if hostname or user entity exists, find Windows sign-in failures related to the observed entities, otherwise skip this step
+    purpose: find Windows sign-in failures if hostname or user entities exist, otherwise skip this step
     task: use `runHuntingQuery` tool; include only the has_any filters for entity types that are present in the input
     query: ```
       SecurityEvent
       | where EventID == 4625
       | where Computer has_any (<comma-separated hostname values>) or Account has_any (<comma-separated user values>)
-      | project TimeGenerated, Account, AccountType, Computer, EventSourceName, EventID, Activity
-      | top 10 by TimeGenerated desc```
-    timespan: e.g. P7D, P30D
-    output: concise report of query results, or say no results if none found; if the incident overview suggests a login-related incident, note whether the results appear to be the triggering events rather than additional related activity""",
+      | summarize Accounts=make_set(Account) by Computer, Activity```
+    timespan: e.g. P3D, P7D
+    output: concise report of query results, also use `createCommentForIncident` with (`Windows sign-in hunt: <report>`)""",
   "linux_signin": """
     input: JSON object containing entity values extracted from a security incident
-    purpose: if hostname or user entity exists, find Linux sign-in failures related to the observed entities, otherwise skip this step
+    purpose: find Linux sign-in failures if hostname or user entities exist, otherwise skip this step
     task: use `runHuntingQuery` tool; include only the has_any filters for entity types that are present in the input
     query: ```
       Syslog
       | where Facility in ('auth', 'authpriv') and ProcessName =~ 'sshd' and SyslogMessage contains 'failed password'
       | where HostName has_any (<comma-separated hostname values>) or SyslogMessage has_any (<comma-separated user values>)
-      | project TimeGenerated, Computer, SyslogMessage
-      | top 10 by TimeGenerated desc```
-    timespan: e.g. P7D, P30D
-    output: concise report of query results, or say no results if none found; if the incident overview suggests a login-related incident, note whether the results appear to be the triggering events rather than additional related activity""",
+      | summarize SyslogMessages=make_set(SyslogMessage) by HostName```
+    timespan: e.g. P3D, P7D
+    output: concise report of query results, also use `createCommentForIncident` with (`Linux sign-in hunt: <report>`)""",
   "entra_signin": """
     input: JSON object containing entity values extracted from a security incident
-    purpose: if user or UPN entity exists, find Entra sign-in failures related to the observed entities, otherwise skip this step
+    purpose: find Entra sign-in failures if user or UPN entities exist, otherwise skip this step
     task: use `runHuntingQuery` tool; include only the has_any filters for entity types that are present in the input
     query: ```
       SigninLogs
       | where ResultSignature == 'FAILURE'
       | where Identity has_any (<comma-separated user values>) or UserPrincipalName has_any (<comma-separated upn values>)
-      | project TimeGenerated, Identity, UserPrincipalName, ResultDescription, IPAddress
-      | top 10 by TimeGenerated desc```
-    timespan: e.g. P7D, P30D
-    output: concise report of query results, or say no results if none found; if the incident overview suggests a login-related incident, note whether the results appear to be the triggering events rather than additional related activity""",
+      | summarize SigninFailures=make_set(ResultDescription), IPAddresses=make_set(IPAddress) by Identity, UserPrincipalName```
+    timespan: e.g. P3D, P7D
+    output: concise report of query results, also use `createCommentForIncident` with (`Entra sign-in hunt: <report>`)""",
   "assessment": f"""
     input: aggregated hunting results and incident context in JSON format
     purpose: classify the security incident based on all available evidence and update the incident accordingly
-    classification criteria and actions:
+    classification criteria:
       | Classification | Criteria | Action |
       |---|---|---|
       | False Positive (FP) | No malicious indicators, known benign activity | Close |
@@ -99,19 +94,23 @@ instructions = {
       | True Positive (TP) | Confirmed malicious indicators or suspicious behavior | Escalate |
       | Suspicious | Inconclusive but warrants investigation | Escalate |
     action: use `updateIncident` and/or `createCommentForIncident` to update the incident
-    If FP or BTP:
+      If FP or BTP:
       - classification: falsePositive or informationalExpectedActivity
       - determination: notMalicious, notEnoughDataToValidate, securityTesting, confirmedUserActivity, or lineOfBusinessApplication
       - assignedTo: {os.environ['ASSIGNEE_RESOLVED']}
-      - resolvingComment: <summary of why the incident is considered FP or BTP>
+      - resolvingComment: Assessment agent: <summary of why the incident is considered FP or BTP>
       - status: resolved
-    If TP or Suspicious:
+      If TP or Suspicious:
       - classification: truePositive, unknown, or omit
       - determination: multiStagedAttack, malware, maliciousUserActivity, unwantedSoftware, phishing, or compromisedAccount
       - assignedTo: {os.environ['ASSIGNEE_IN_PROGRESS']}
-      - status: inProgress
-      - use `createCommentForIncident` to note summary of why the incident is considered TP or Suspicious (resolvingComment is only for resolved incidents)"""
+      - resolvingComment: N/A, resolvingComment is only for resolved incidents; use `createCommentForIncident` with (`Assessment: <summary of why the incident is considered TP or Suspicious>`)
+      - status: inProgress"""
 }
+
+entraurl = f"https://login.microsoftonline.com/{os.environ['ENTRA_TENANT_ID']}"
+
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 def get_mi_token():
   return ManagedIdentityCredential().get_token('api://AzureADTokenExchange/.default').token
@@ -152,23 +151,22 @@ def get_agentuser_token():
     }
   )['access_token']
 
-app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-entraurl = f"https://login.microsoftonline.com/{os.environ['ENTRA_TENANT_ID']}"
-auth_headers = {"Authorization": f"Bearer {get_agentuser_token()}"}
-client = Client(headers=auth_headers)
+def graph_client() -> Client:
+  auth_headers = {"Authorization": f"Bearer {get_agentuser_token()}"}
+  return Client(headers=auth_headers)
 
 @tool(name='getIncidentWithAlerts', description='Get a security incident with its associated alerts from Microsoft Graph Security API.')
 def get_incident_with_alerts(
   incident_id: Annotated[str, Field(description='The ID of the incident to retrieve.')]
 ) -> dict:
-  return client.get(f"https://graph.microsoft.com/v1.0/security/incidents?$filter=id eq '{incident_id}'&$expand=alerts").json()
+  return graph_client().get(f"https://graph.microsoft.com/v1.0/security/incidents?$filter=id eq '{incident_id}'&$expand=alerts").json()
 
 @tool(name='createCommentForIncident', description='Create a comment for a security incident in Microsoft Graph Security API.')
 def create_comment_for_incident(
   incident_id: Annotated[str, Field(description='The ID of the incident to comment on.')],
   comment: Annotated[str, Field(description='The comment to be added.')]
 ) -> dict:
-  return client.post(f"https://graph.microsoft.com/v1.0/security/incidents/{incident_id}/comments", json={'comment': comment}).json()
+  return graph_client().post(f"https://graph.microsoft.com/v1.0/security/incidents/{incident_id}/comments", json={'comment': comment}).json()
 
 @tool(name='updateIncident', description='Update a security incident in Microsoft Graph Security API.')
 def update_incident(
@@ -186,7 +184,7 @@ def update_incident(
     'resolvingComment': resolvingComment,
     'status': status
   }.items() if v is not None}
-  return client.patch(f"https://graph.microsoft.com/v1.0/security/incidents/{incident_id}", json=update_data).json()
+  return graph_client().patch(f"https://graph.microsoft.com/v1.0/security/incidents/{incident_id}", json=update_data).json()
 
 @tool(name='runHuntingQuery', description='Run a hunting query against Microsoft Graph Security API.')
 def run_hunting_query(
@@ -194,7 +192,7 @@ def run_hunting_query(
   timespan: Annotated[str, Field(description='ISO8601 duration (e.g., P7D, P30D).')]
 ) -> dict:
   logging.info('Running hunting query: %s', query)
-  return client.post('https://graph.microsoft.com/v1.0/security/runHuntingQuery', json={'query': query, 'timespan': timespan}).json()
+  return graph_client().post('https://graph.microsoft.com/v1.0/security/runHuntingQuery', json={'query': query, 'timespan': timespan}).json()
 
 @app.route(route='triage', methods=['GET'])
 async def triage(req: func.HttpRequest) -> func.HttpResponse:
@@ -222,11 +220,11 @@ async def triage(req: func.HttpRequest) -> func.HttpResponse:
 
     hunting_workflow = (
       ConcurrentBuilder(participants=[
-        foundry.as_agent(name='RelatedAlertsAgent', instructions=instructions['related_alerts'], tools=[run_hunting_query]),
+        foundry.as_agent(name='RelatedAlertsAgent', instructions=instructions['related_alerts'], tools=[run_hunting_query, create_comment_for_incident]),
         foundry.as_agent(name='ThreatIntelAgent', instructions=instructions['threat_intel'], tools=[run_hunting_query, create_comment_for_incident]),
-        foundry.as_agent(name='WindowsSignInAgent', instructions=instructions['windows_signin'], tools=[run_hunting_query]),
-        foundry.as_agent(name='LinuxSignInAgent', instructions=instructions['linux_signin'], tools=[run_hunting_query]),
-        foundry.as_agent(name='EntraSignInAgent', instructions=instructions['entra_signin'], tools=[run_hunting_query]),
+        foundry.as_agent(name='WindowsSignInAgent', instructions=instructions['windows_signin'], tools=[run_hunting_query, create_comment_for_incident]),
+        foundry.as_agent(name='LinuxSignInAgent', instructions=instructions['linux_signin'], tools=[run_hunting_query, create_comment_for_incident]),
+        foundry.as_agent(name='EntraSignInAgent', instructions=instructions['entra_signin'], tools=[run_hunting_query, create_comment_for_incident]),
       ])
       .with_aggregator(aggregate_hunting)
       .build()
