@@ -21,12 +21,13 @@ instructions = {
       "incident_id": "<id>",
       "overview": "<brief concise summary of the incident>",
       "entities": {
-        "ips": [...],
-        "domains": [...],
-        "hashes": [...],
-        "users": [...],
-        "upns": [...],
-        "hostnames": [...]
+        "<IP addresses>": [...],
+        "<domains>": [...],
+        "<URLs>": [...],
+        "<file hashes>": [...],
+        "<hostnames>": [...],
+        "<users>": [...],
+        "<UPNs>": [...]
       }
     }""",
   "related_alerts": """
@@ -41,7 +42,7 @@ instructions = {
     output: concise report of query results, also use `createCommentForIncident` with (`Related alerts hunt: <report>`)""",
   "threat_intel": """
     input: JSON object containing entity values extracted from a security incident
-    purpose: find threat intelligence indicators related to the observed entities
+    purpose: find threat intelligence indicators for IP addresses, domains, URLs, and file hashes observed in the incident
     task: use `runHuntingQuery` tool, substituting all entity values into the in filter
     query: ```
       ThreatIntelIndicators
