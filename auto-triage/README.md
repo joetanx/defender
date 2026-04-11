@@ -39,3 +39,31 @@ flowchart TD
   A2 -->|Token exchange| A3
   A1 -->|Token exchange| A3 -->|Defender unified RBAC roles| G
 ```
+
+## 3. Agents and tools
+
+```mermaid
+flowchart LR
+  subgraph Agents
+    A1(Context)
+    A2(Related alerts)
+    A3(Threat indicators)
+    A4(Sign-failures)
+    A5(Assessment)
+  end
+  subgraph "Tools (Graph security APIs)"
+    T1(Get incidents with alerts)
+    T2(Create comment for incident)
+    T3(Update incident)
+    T4(Run hunting query)
+  end
+  A1 --> T1
+  A2 --> T2
+  A2 --> T4
+  A3 --> T2
+  A3 --> T4
+  A4 --> T2
+  A4 --> T4
+  A5 --> T2
+  A5 --> T3
+```
