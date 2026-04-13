@@ -53,17 +53,17 @@ flowchart LR
   end
   subgraph "Tools (Graph security APIs)"
     T1(Get incidents with alerts)
-    T2(Create comment for incident)
-    T3(Update incident)
-    T4(Run hunting query)
+    T2(Run hunting query)
+    T3(Create comment for incident)
+    T4(Update incident)
   end
   A1 --> T1
   A2 --> T2
-  A2 --> T4
+  A2 --> T3
   A3 --> T2
-  A3 --> T4
+  A3 --> T3
   A4 --> T2
-  A4 --> T4
-  A5 --> T2
+  A4 --> T3
   A5 --> T3
+  A5 --> T4
 ```
