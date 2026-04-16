@@ -208,6 +208,7 @@ async def triage(req: func.HttpRequest) -> func.HttpResponse:
       tools=[get_incident_with_alerts]
     ) as context_agent:
       context_result = await context_agent.run(f"Incident ID: {incident_id}")
+      logging.info('Context result: %s', context_result.text)
     entities_json = context_result.text
 
     # Phase 2: Run all hunting queries concurrently — each agent handles one query
