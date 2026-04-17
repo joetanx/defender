@@ -169,7 +169,7 @@ def get_incident_with_alerts(
       logging.warning('Incident %s not found, retrying in 60s (attempt %d/5)', incident_id, attempt)
       time.sleep(60)
   logging.error('Incident %s not found after 5 attempts', incident_id)
-  return {}
+  return {'error': f'Incident {incident_id} not found after 5 attempts'}
 
 @tool(name='createCommentForIncident', description='Create a comment for a security incident in Microsoft Graph Security API.')
 def create_comment_for_incident(
