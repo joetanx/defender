@@ -121,7 +121,8 @@ def get_agentbp_token():
   agentbp = msal.ConfidentialClientApplication(
     client_id=os.environ['ENTRA_AGENT_BLUEPRINT_ID'],
     client_credential={'client_assertion': get_mi_token()},
-    authority=entraurl
+    authority=entraurl,
+    azure_region=os.environ['AZURE_REGION']
   )
   return agentbp.acquire_token_for_client(
     scopes=['api://AzureADTokenExchange/.default'],
@@ -132,7 +133,8 @@ def get_agentid_token():
   agentid = msal.ConfidentialClientApplication(
     client_id=os.environ['ENTRA_AGENT_IDENTITY_ID'],
     client_credential={'client_assertion': get_agentbp_token()},
-    authority=entraurl
+    authority=entraurl,
+    azure_region=os.environ['AZURE_REGION']
   )
   return agentid.acquire_token_for_client(
     scopes=['api://AzureADTokenExchange/.default']
@@ -142,7 +144,8 @@ def get_agentuser_token():
   agentuser = msal.ConfidentialClientApplication(
     client_id=os.environ['ENTRA_AGENT_IDENTITY_ID'],
     client_credential={'client_assertion': get_agentbp_token()},
-    authority=entraurl
+    authority=entraurl,
+    azure_region=os.environ['AZURE_REGION']
   )
   return agentuser.acquire_token_for_client(
     scopes=['https://graph.microsoft.com/.default'],
@@ -212,6 +215,7 @@ def run_hunting_query(
 async def triage(req: func.HttpRequest) -> func.HttpResponse:
   incident_id = req.params.get('prompt')
   logging.info('Triage request received for incident ID: %s', incident_id)
+
   async with (AsyncManagedIdentityCredential() as credential):
     foundry = FoundryChatClient(credential=credential)
 
