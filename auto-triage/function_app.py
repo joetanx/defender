@@ -1,6 +1,7 @@
 import azure.functions as func
 import logging
 import os
+import time
 import msal
 from httpx import Client
 from typing import Annotated, Optional
@@ -160,7 +161,15 @@ def graph_client() -> Client:
 def get_incident_with_alerts(
   incident_id: Annotated[str, Field(description='The ID of the incident to retrieve.')]
 ) -> dict:
-  return graph_client().get(f"https://graph.microsoft.com/v1.0/security/incidents?$filter=id eq '{incident_id}'&$expand=alerts").json()
+  for attempt in range(5):
+    response = graph_client().get(f"https://graph.microsoft.com/v1.0/security/incidents?$filter=id eq '{incident_id}'&$expand=alerts").json()
+    if response['value']:
+      return response['value'][0]
+    else:
+      logging.warning('Incident %s not found, retrying in 60s (attempt %d/5)', incident_id, attempt)
+      time.sleep(60)
+  logging.error('Incident %s not found after 5 attempts', incident_id)
+  return {}
 
 @tool(name='createCommentForIncident', description='Create a comment for a security incident in Microsoft Graph Security API.')
 def create_comment_for_incident(
@@ -193,11 +202,16 @@ def run_hunting_query(
   timespan: Annotated[str, Field(description='ISO8601 duration (e.g., P7D, P30D).')]
 ) -> dict:
   logging.info('Running hunting query: %s', query)
-  return graph_client().post('https://graph.microsoft.com/v1.0/security/runHuntingQuery', json={'query': query, 'timespan': timespan}).json()
-
+  response = graph_client().post('https://graph.microsoft.com/v1.0/security/runHuntingQuery', json={'query': query, 'timespan': timespan}).json()
+  if response['results']:
+    return response['results']
+  else:
+    logging.warning('No results returned for query: %s', query)
+    return {'results': 'The query returned no results.'}
 @app.route(route='triage', methods=['GET'])
 async def triage(req: func.HttpRequest) -> func.HttpResponse:
   incident_id = req.params.get('prompt')
+  logging.info('Triage request received for incident ID: %s', incident_id)
   async with (AsyncManagedIdentityCredential() as credential):
     foundry = FoundryChatClient(credential=credential)
 
