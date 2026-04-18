@@ -145,7 +145,6 @@ Paste in the function code: Functions → App files → select `function_app.py`
 Populate the following environment variables:
 - `ASSIGNEE_IN_PROGRESS`
 - `ASSIGNEE_RESOLVED`
-- `AZURE_REGION`
 - `ENTRA_AGENT_BLUEPRINT_ID`
 - `ENTRA_AGENT_IDENTITY_ID`
 - `ENTRA_AGENT_USER_ID`
@@ -157,7 +156,7 @@ Populate the following environment variables:
 >
 > The environment variables can also be edited as json under `advanced edit`
 
-![](https://github.com/user-attachments/assets/e16ae1f3-0733-4565-a3a7-1dcd4b4e8a27)
+![](https://github.com/user-attachments/assets/c7f0cfa1-080f-43e6-b0e6-bd8ea2b70e22)
 
 ## 4. Sentinel setup
 
