@@ -121,8 +121,7 @@ def get_agentbp_token():
   agentbp = msal.ConfidentialClientApplication(
     client_id=os.environ['ENTRA_AGENT_BLUEPRINT_ID'],
     client_credential={'client_assertion': get_mi_token()},
-    authority=entraurl,
-    azure_region=os.environ['AZURE_REGION']
+    authority=entraurl
   )
   return agentbp.acquire_token_for_client(
     scopes=['api://AzureADTokenExchange/.default'],
@@ -133,8 +132,7 @@ def get_agentid_token():
   agentid = msal.ConfidentialClientApplication(
     client_id=os.environ['ENTRA_AGENT_IDENTITY_ID'],
     client_credential={'client_assertion': get_agentbp_token()},
-    authority=entraurl,
-    azure_region=os.environ['AZURE_REGION']
+    authority=entraurl
   )
   return agentid.acquire_token_for_client(
     scopes=['api://AzureADTokenExchange/.default']
@@ -144,8 +142,7 @@ def get_agentuser_token():
   agentuser = msal.ConfidentialClientApplication(
     client_id=os.environ['ENTRA_AGENT_IDENTITY_ID'],
     client_credential={'client_assertion': get_agentbp_token()},
-    authority=entraurl,
-    azure_region=os.environ['AZURE_REGION']
+    authority=entraurl
   )
   return agentuser.acquire_token_for_client(
     scopes=['https://graph.microsoft.com/.default'],
@@ -226,8 +223,8 @@ async def triage(req: func.HttpRequest) -> func.HttpResponse:
       tools=[get_incident_with_alerts]
     ) as context_agent:
       context_result = await context_agent.run(f"Incident ID: {incident_id}")
-      logging.info('Context result: %s', context_result.text)
     entities_json = context_result.text
+    logging.info('Context result: %s', entities_json)
 
     # Phase 2: Run all hunting queries concurrently — each agent handles one query
     async def aggregate_hunting(results: list[AgentExecutorResponse]) -> str:
