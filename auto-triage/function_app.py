@@ -208,6 +208,7 @@ def run_hunting_query(
   else:
     logging.warning('No results returned for query: %s', query)
     return {'results': 'The query returned no results.'}
+
 @app.route(route='triage', methods=['GET'])
 async def triage(req: func.HttpRequest) -> func.HttpResponse:
   incident_id = req.params.get('prompt')
