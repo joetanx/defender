@@ -70,27 +70,7 @@ flowchart LR
   A5 --> T4
 ```
 
-## 2. Foundry
-
-Get the foundry project endpoint:
-
-![](https://github.com/user-attachments/assets/9bef2460-bf13-40ac-b80f-554660e5303b)
-
-Get the name of the model to be used:
-
-> [!Tip]
->
-> The model selected can affect if the workflow runs properly; the mini/nano models can work for smaller incidents, but struggle for large-scale incidents (e.g. many linked alerts, large hunting query results)
-
-![](https://github.com/user-attachments/assets/c1720b9f-d81b-44de-a5b6-4a185138e47e)
-
-Give `Cognitive Services User` permission to function app managed identity:
-
-(this step needs to be performed after the function app is created)
-
-![](https://github.com/user-attachments/assets/033a2994-4cb4-47c0-a962-97244226d90d)
-
-## 3. Function app
+## 2. Function app
 
 > [!Important]
 >
@@ -98,7 +78,7 @@ Give `Cognitive Services User` permission to function app managed identity:
 >
 > The IDs of Entra tenant, Agent Bluepint, Agent Identity, Agent User are required in the function app configuration
 
-### 3.1. Create function app
+### 2.1. Create function app
 
 Select `App Service` hosting plan:
 
@@ -114,7 +94,7 @@ Enable system-assigned managed identity - the agent code uses this MI to authent
 
 ![](https://github.com/user-attachments/assets/5b192775-3961-4f5b-8ff8-9a226db0f474)
 
-### 3.2. Setup function app
+### 2.2. Setup function app
 
 SSH to the function app container: Development Tools → SSH
 
@@ -157,6 +137,26 @@ Populate the following environment variables:
 > The environment variables can also be edited as json under `advanced edit`
 
 ![](https://github.com/user-attachments/assets/c7f0cfa1-080f-43e6-b0e6-bd8ea2b70e22)
+
+## 3. Foundry
+
+Get the foundry project endpoint:
+
+![](https://github.com/user-attachments/assets/9bef2460-bf13-40ac-b80f-554660e5303b)
+
+Get the name of the model to be used:
+
+> [!Tip]
+>
+> The model selected can affect if the workflow runs properly; the mini/nano models can work for smaller incidents, but struggle for large-scale incidents (e.g. many linked alerts, large hunting query results)
+
+![](https://github.com/user-attachments/assets/c1720b9f-d81b-44de-a5b6-4a185138e47e)
+
+Give `Cognitive Services User` permission to function app managed identity:
+
+(this step needs to be performed after the function app is created)
+
+![](https://github.com/user-attachments/assets/033a2994-4cb4-47c0-a962-97244226d90d)
 
 ## 4. Sentinel setup
 
