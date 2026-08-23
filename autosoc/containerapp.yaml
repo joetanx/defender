@@ -50,11 +50,14 @@ properties:
             value: "${ASSIGNEE_RESOLVED}"
           - name: HUNT_TIMESPAN
             value: "P7D"
-          # Logic App requests this scope with its managed identity.
-          - name: TRIAGE_AUTH_SCOPE
-            value: "api://${BLUEPRINT_CLIENT_ID}/.default"
-          - name: TRIAGE_ALLOWED_CALLER_APP_IDS
+          # Logic App managed identities allowed to invoke /api/triage.
+          - name: AUTOSOC_CALLER_IDS
             value: "${LOGIC_APP_MI_CLIENT_ID}"
+          # Agent 365 identity used for Graph and observability token exchange.
+          - name: AGENTIC_INSTANCE_ID
+            value: "${AGENTIC_INSTANCE_ID}"
+          - name: AGENTIC_USER_ID
+            value: "${AGENTIC_USER_ID}"
           # Set to AGENTIC to enable token exchange for Graph, MCP, and observability (Unset for playground mode)
           - name: AUTH_HANDLER_NAME
             value: "AGENTIC"

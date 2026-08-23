@@ -1,335 +1,295 @@
-> Microsoft Agent 365 python samples: https://github.com/microsoft/Agent365-Samples/tree/main/python/
+# Deploy AutoSOC
 
-## Samples
+This guide adapts the Microsoft Agent 365 sample deployment procedure for AutoSOC. It provisions Azure AI Foundry, Azure Files, Azure Container Apps, Azure Container Registry, a user-assigned managed identity (UAMI), an Agent 365 identity, and the Logic App authentication path used by `POST /api/triage`.
 
-| Sample | Purpose |
-| --- | --- |
-| [Agent Framework](agent-framework) | Deployable Microsoft Agent Framework agent with Agent 365 MCP tooling. |
-| [LangChain](langchain) | Deployable LangChain agent with Agent 365 MCP tooling through `langchain-mcp-adapters`. |
-| [Jupyter](jupyter) | Jupyter-based LangChain development sandbox with Microsoft Graph security tools. |
-| [Sentinel MCP](sentinel-mcp) | Reference LangChain host that connects directly to Microsoft Sentinel data exploration and Defender triage MCP servers. |
+Run the shell commands in Azure Cloud Shell using Bash. Cloud Shell already includes Azure CLI, .NET, Python, PowerShell, `jq`, and `envsubst`, but its local filesystem is ephemeral. Download the generated Agent 365 configuration files before ending the session.
 
-The shared deployment procedure below applies to samples that include `containerapp.yaml`, `Dockerfile`, `pyproject.toml`, and an `app` directory. The Jupyter sample has its own deployment guide, while Sentinel MCP is currently a source-only reference.
+## 1. Prerequisites
 
-# Part I. Reusable resources setup
+You need:
 
-## 1. Reusable resources
+- An Azure subscription and permission to create resource groups, managed identities, role assignments, storage, Container Apps, Container Registry, and Azure AI Foundry resources.
+- A Microsoft 365 tenant enabled for Agent 365/Frontier.
+- An account allowed to run `a365 setup requirements` and `a365 setup all`. Tenant setup can require Global Administrator, Agent ID Administrator, or Agent ID Developer roles.
+- Application Administrator or Cloud Application Administrator to add a federated identity credential to the Agent 365 blueprint.
+- An administrator who can grant Microsoft Graph consent and assign the agentic user a supported security role.
+- Microsoft Defender XDR advanced hunting access to the tables AutoSOC queries: `SecurityAlert`, `ThreatIntelIndicators`, `SecurityEvent`, `Syslog`, and `SigninLogs`.
+- A Sentinel automation rule and Logic App. Their definitions are external to this repository.
 
-The sample agents are deployed in container apps and depends on several resources that can be shared between agents:
+The Graph token used by AutoSOC requires:
 
-| Resource | Description |
-|---|---|
-| Container app environment | _Container_ for container apps.<br>Connects to Azure files via SAS key for volume mounts to file shares. |
-| Container registry | Hosts the agent images that have the respective python packages built into the images.<br>Authenticates via container app's UAMI. |
-| Azure files | Agent code is intentionally separated away from the image for _development_.<br>Agent code would typically be baked into the image for _production_. |
-| Foundry | Provides the model deployment.<br>Authenticates via container app's UAMI. |
+| Permission | Type | Purpose |
+| --- | --- | --- |
+| `SecurityIncident.ReadWrite.All` | Delegated | Read incidents and alerts, add comments, and update incidents |
+| `ThreatHunting.Read.All` | Delegated | Run advanced hunting queries |
 
-```mermaid
-flowchart TD
-    ACA(Container App)
-    subgraph Foundry
-        Model(Model)
-    end
-    subgraph Storage Account
-        Share(Azure Files)
-    end
-    CAE(Container App Environment)
-    subgraph Container Registry
-        Image(Image)
-    end
-    A365(A365)
-    Model --> ACA
-    Share --> ACA
-    CAE --> ACA
-    Image --> ACA
-    ACA --> A365
-```
+For delegated incident updates, the agentic user must have a supported role such as **Security Operator** or **Security Administrator**. Apply least privilege appropriate to your tenant.
 
-### 1.1. Parameters setup
+## 2. Set deployment variables
 
-> [!Important]
->
-> The setup is performed in Cloud Shell (bash) in Azure portal, which already has `az`, `dotnet`, `python` and `pwsh` (v7) tools.
->
-> (it even has most bash utilities like `vi` and `envsubst`)
->
-> This is convenient, but the session is **ephemeral**, so any files to be kept from the session must be download via `Manage files` from the Cloud Shell.
-
-1. Set az CLI to desired subscription (so that future az commands use this subscription without needing `--subscription`)
-2. Setup the shell/environment variables (uses a shared `$PROJECT` name)
-3. Create the resource group for the project
+Select the subscription, choose a globally distinguishable project name, and create the resource group:
 
 ```sh
-az account set -s <subscription-id>
+az account set --subscription '<subscription-id>'
+
 export LOCATION='southeastasia'
-PROJECT='<desired-name>'$(uuidgen | head -c 8)
+export PROJECT='autosoc-'$(uuidgen | tr '[:upper:]' '[:lower:]' | head -c 8)
 export RG='rg-'$PROJECT
-az group create -n $RG -l $LOCATION
+export APP_NAME='autosoc'
+
+az group create --name $RG --location $LOCATION
 ```
 
-> [!Note]
->
-> 1. Storage account and ACR names need to be globally unique, `$(uuidgen | head -c 8)` helps to get a sort-of random alphanumeric suffix to have a sufficiently unique name
-> 2. Certain variables in this write-up are exported because they are used for `envsubst` later to be substituted into the container app manifest files.
->
-> Shell vs environment variables:
->
-> |  | Shell variables | Environment variables|
-> |---|---|---|
-> | Scope | **Local** to the current shell process | **Global** to the shell and all spawned child processes. |
-> | Viewing command | `set` (displays all shell and environment variables) | `env` or `printenv` |
-
-### 1.2. One-time subscription resource providers registration
-
-The subscription needs to be registered for `Microsoft.OperationalInsights` and `Microsoft.ContainerRegistry` resource provider for container apps environment and container registry creation.
+Set application choices. The model name must be available in the selected Foundry region.
 
 ```sh
-az provider register -n Microsoft.OperationalInsights
-az provider register -n Microsoft.ContainerRegistry
-```
-
-Check the registration state, it can take some time to change from `Registering` to `Registered`:
-
-```sh
-az provider show -n Microsoft.OperationalInsights --query "registrationState"
-az provider show -n Microsoft.ContainerRegistry --query "registrationState"
-```
-
-## 2. Foundry
-
-Setup resource names based on project name:
-
-```sh
-FOUNDRY_NAME='foundry-'$PROJECT
-FOUNDRY_PROJECT='proj-'$PROJECT
 export FOUNDRY_MODEL='gpt-5.6-luna'
+export ASSIGNEE_IN_PROGRESS='<soc-queue-or-user>'
+export ASSIGNEE_RESOLVED='<soc-queue-or-user>'
 ```
 
-Create Foundry resource:
+Register the resource providers once per subscription, then wait until each reports `Registered`:
 
 ```sh
-az cognitiveservices account create -n $FOUNDRY_NAME -g $RG -l $LOCATION \
-  --kind 'AIServices' --sku 'S0' --custom-domain $FOUNDRY_NAME --yes
-```
+for PROVIDER in Microsoft.App Microsoft.OperationalInsights Microsoft.ContainerRegistry Microsoft.Storage Microsoft.CognitiveServices; do
+  az provider register --namespace $PROVIDER
+done
 
-> Delete and purge Foundry resource (if need to redo)
-> 
-> ```sh
-> az cognitiveservices account delete -n $FOUNDRY_NAME -g $RG
-> az cognitiveservices account purge -n $FOUNDRY_NAME -g $RG -l $LOCATION
-> ```
-
-Create Project under the Foundry resource:
-
-```sh
-az cognitiveservices account project create -n $FOUNDRY_NAME -g $RG -l $LOCATION \
-  --project-name $FOUNDRY_PROJECT --display-name $FOUNDRY_PROJECT
-```
-
-Create model deployment:
-
-```sh
-MODEL_VERSION=$(az cognitiveservices model list -l $LOCATION --query "[?model.name=='${FOUNDRY_MODEL}'&&kind=='AIServices'].model.version" -o tsv)
-az cognitiveservices account deployment create -n $FOUNDRY_NAME -g $RG --deployment-name $FOUNDRY_MODEL \
-  --model-name $FOUNDRY_MODEL --model-version $MODEL_VERSION --model-format 'OpenAI' --capacity 500 --sku 'GlobalStandard'
-```
-
-Export project endpoint and model environment variables:
-
-```sh
-export FOUNDRY_PROJECT_ENDPOINT=$(az cognitiveservices account project show -n $FOUNDRY_NAME -g $RG --project-name $FOUNDRY_PROJECT --query 'properties.endpoints' -o tsv)
-```
-
-## 3. Azure Files
-
-Create storage account (storage account name cannot contain dashes):
-
-```sh
-SA_NAME='stor'$PROJECT
-az storage account create -n $SA_NAME -g $RG -l $LOCATION --sku Standard_LRS --tags SecurityControl=Ignore
-```
-
-## 4. Container Apps Environment
-
-Create Container Apps environment:
-
-```sh
-CAE_NAME='cae-'$PROJECT
-az containerapp env create -n $CAE_NAME -g $RG -l $LOCATION
-```
-
-Verify container app environment ID:
-
-```sh
-export CAE_ID=$(az containerapp env show -n $CAE_NAME -g $RG --query id -o tsv)
-```
-
-Get container app environment domain (for a365 CLI messaging endpoint):
-
-```sh
-CAE_DOMAIN=$(az containerapp env show -n $CAE_NAME -g $RG --query "properties.defaultDomain" -o tsv)
-```
-
-## 5. Container Registry
-
-Create ACR (ACR name cannot contain dashes):
-
-```sh
-export ACR_NAME='acr'$PROJECT
-az acr create -n $ACR_NAME -g $RG -l $LOCATION --sku Basic --tags SecurityControl=Ignore
-```
-
-# Part II. Per-agent setup
-
-Set `SAMPLE` to the agent runtime (different path from the `samples` path):
-
-| Sample | Environment |
-|---|---|
-| [Agent Framework](agent-framework) | `SAMPLE='agent-framework'` |
-| [LangChain](langchain) | `SAMPLE='langchain'` |
-| [Jupyter](jupyter) | `SAMPLE='jupyter'` |
-
-Export desired agent name:
-
-```sh
-export APP_NAME='<app-name>'
-```
-
-## 1. Create UAMI for the agent app
-
-```sh
-UAMI_NAME='uami-'$APP_NAME
-az identity create -n $UAMI_NAME -g $RG
-```
-
-Get UAMI service principal ID:
-
-```sh
-UAMI_ID=$(az identity show -n $UAMI_NAME -g $RG --query principalId -o tsv)
-```
-
-Export UAMI client ID and resource ID as environment variable (for later container app deployment use):
-
-```sh
-export UAMI_CLIENT_ID=$(az identity show -n $UAMI_NAME -g $RG --query clientId -o tsv)
-export UAMI_RSC_ID=$(az identity show -n $UAMI_NAME -g $RG --query id -o tsv)
-```
-
-#### 1.1. Assign Foundry role to UAMI
-
-```sh
-FOUNDRY_ID=$(az cognitiveservices account show -n $FOUNDRY_NAME -g $RG --query id -o tsv)
-az role assignment create --assignee $UAMI_ID --role 'Cognitive Services User' --scope $FOUNDRY_ID
-```
-
-#### 1.2. Assign ACR role to UAMI
-
-```sh
-ACR_ID=$(az acr show -n $ACR_NAME --query id -o tsv)
-az role assignment create --assignee $UAMI_ID --role AcrPull --scope $ACR_ID
-```
-
-## 2. Create file share
-
-```sh
-CONN_STR=$(az storage account show-connection-string -n $SA_NAME -g $RG --query connectionString -o tsv)
-az storage share create -n $APP_NAME --connection-string "$CONN_STR"
-```
-
-### 2.1. Download app files from GitHub and upload to file share
-
-```sh
-FILES=$(curl -s https://api.github.com/repos/joetanx/mslab/contents/agent-365/samples/$SAMPLE/app | jq -r '.[] | .name')
-for FILE in $FILES; do
-  curl -sLO https://github.com/joetanx/mslab/raw/refs/heads/main/agent-365/samples/$SAMPLE/app/$FILE
-  az storage file upload -s $APP_NAME --source $FILE --connection-string $CONN_STR
+for PROVIDER in Microsoft.App Microsoft.OperationalInsights Microsoft.ContainerRegistry Microsoft.Storage Microsoft.CognitiveServices; do
+  az provider show --namespace $PROVIDER --query registrationState --output tsv
 done
 ```
 
-### 2.2. Register file share in container app environment
+## 3. Create shared Azure resources
+
+### 3.1. Azure AI Foundry
 
 ```sh
-SA_KEY=$(az storage account keys list -n $SA_NAME -g $RG --query "[0].value" -o tsv)
-az containerapp env storage set -n $CAE_NAME -g $RG --storage-name $APP_NAME \
-  -a $SA_NAME -k "$SA_KEY" -f $APP_NAME --access-mode ReadOnly
+export FOUNDRY_NAME='foundry-'$PROJECT
+export FOUNDRY_PROJECT='proj-'$PROJECT
+
+az cognitiveservices account create \
+  --name $FOUNDRY_NAME \
+  --resource-group $RG \
+  --location $LOCATION \
+  --kind AIServices \
+  --sku S0 \
+  --custom-domain $FOUNDRY_NAME \
+  --yes
+
+az cognitiveservices account project create \
+  --name $FOUNDRY_NAME \
+  --resource-group $RG \
+  --location $LOCATION \
+  --project-name $FOUNDRY_PROJECT \
+  --display-name $FOUNDRY_PROJECT
 ```
 
-## 3. Build agent image in ACR
+Create the model deployment:
 
 ```sh
-curl -sLO "https://github.com/joetanx/mslab/raw/refs/heads/main/agent-365/samples/$SAMPLE/{pyproject.toml,Dockerfile}"
-az acr build -r $ACR_NAME -t $APP_NAME:latest -f Dockerfile .
+MODEL_VERSION=$(az cognitiveservices model list \
+  --location $LOCATION \
+  --query "[?model.name=='${FOUNDRY_MODEL}' && kind=='AIServices'].model.version | [0]" \
+  --output tsv)
+
+test -n "$MODEL_VERSION" || { echo "Model $FOUNDRY_MODEL is unavailable in $LOCATION"; exit 1; }
+
+az cognitiveservices account deployment create \
+  --name $FOUNDRY_NAME \
+  --resource-group $RG \
+  --deployment-name $FOUNDRY_MODEL \
+  --model-name $FOUNDRY_MODEL \
+  --model-version $MODEL_VERSION \
+  --model-format OpenAI \
+  --capacity 500 \
+  --sku GlobalStandard
+
+export FOUNDRY_PROJECT_ENDPOINT=$(az cognitiveservices account project show \
+  --name $FOUNDRY_NAME \
+  --resource-group $RG \
+  --project-name $FOUNDRY_PROJECT \
+  --query properties.endpoints \
+  --output tsv)
 ```
 
-## 4. AI teammate setup in Agent 365
+### 3.2. Storage, Container Apps environment, and registry
 
-> [!Note]
->
-> AI teammate is currently under Frontier, which can be activated in MAC
-> 
-> ![](https://github.com/user-attachments/assets/c54e9f02-dfc9-4bd2-9c91-6018a484d3a7)
->
-> ![](https://github.com/user-attachments/assets/b5b2e15f-ea73-422d-ba8c-f656941f54d9)
->
-> ![](https://github.com/user-attachments/assets/0892e6cb-2efe-48f0-b4f4-f364a19709f4)
+Storage account and registry names cannot contain dashes and must be globally unique.
 
-### 4.1. Prepare a365 CLI
+```sh
+export SA_NAME=$(echo 'stor'$PROJECT | tr -d '-')
+export CAE_NAME='cae-'$PROJECT
+export ACR_NAME=$(echo 'acr'$PROJECT | tr -d '-')
 
-> [!Important]
->
-> The setup is performed in Cloud Shell (bash) in Azure portal, which already has `az`, `dotnet`, `python` and `pwsh` (v7) tools.
->
-> (it even has most bash utilities like `vi` and `envsubst`)
->
-> This is convenient, but the session is **ephemeral**, so any files to be kept from the session must be download via `Manage files` from the Cloud Shell.
+az storage account create \
+  --name $SA_NAME \
+  --resource-group $RG \
+  --location $LOCATION \
+  --sku Standard_LRS \
+  --tags SecurityControl=Ignore
 
-Install a365 CLI in the Cloud Shell:
+az containerapp env create \
+  --name $CAE_NAME \
+  --resource-group $RG \
+  --location $LOCATION
+
+az acr create \
+  --name $ACR_NAME \
+  --resource-group $RG \
+  --location $LOCATION \
+  --sku Basic \
+  --tags SecurityControl=Ignore
+
+export CAE_ID=$(az containerapp env show \
+  --name $CAE_NAME --resource-group $RG --query id --output tsv)
+export CAE_DOMAIN=$(az containerapp env show \
+  --name $CAE_NAME --resource-group $RG --query properties.defaultDomain --output tsv)
+```
+
+## 4. Create the AutoSOC managed identity
+
+```sh
+export UAMI_NAME='uami-'$APP_NAME
+az identity create --name $UAMI_NAME --resource-group $RG
+
+export UAMI_ID=$(az identity show \
+  --name $UAMI_NAME --resource-group $RG --query principalId --output tsv)
+export UAMI_CLIENT_ID=$(az identity show \
+  --name $UAMI_NAME --resource-group $RG --query clientId --output tsv)
+export UAMI_RSC_ID=$(az identity show \
+  --name $UAMI_NAME --resource-group $RG --query id --output tsv)
+```
+
+Grant the UAMI access to Foundry and permission to pull from ACR:
+
+```sh
+FOUNDRY_ID=$(az cognitiveservices account show \
+  --name $FOUNDRY_NAME --resource-group $RG --query id --output tsv)
+ACR_ID=$(az acr show --name $ACR_NAME --query id --output tsv)
+
+az role assignment create \
+  --assignee-object-id $UAMI_ID \
+  --assignee-principal-type ServicePrincipal \
+  --role 'Cognitive Services User' \
+  --scope $FOUNDRY_ID
+
+az role assignment create \
+  --assignee-object-id $UAMI_ID \
+  --assignee-principal-type ServicePrincipal \
+  --role AcrPull \
+  --scope $ACR_ID
+```
+
+## 5. Create and populate the Azure Files share
+
+The image contains Python dependencies but does not copy the application source. The Container App mounts this share at `/app`.
+
+Run these commands from the AutoSOC repository root containing `app`, `Dockerfile`, and `pyproject.toml`:
+
+```sh
+export CONN_STR=$(az storage account show-connection-string \
+  --name $SA_NAME --resource-group $RG --query connectionString --output tsv)
+
+az storage share create \
+  --name $APP_NAME \
+  --connection-string "$CONN_STR"
+
+az storage file upload-batch \
+  --destination $APP_NAME \
+  --source app \
+  --connection-string "$CONN_STR"
+
+SA_KEY=$(az storage account keys list \
+  --name $SA_NAME --resource-group $RG --query '[0].value' --output tsv)
+
+az containerapp env storage set \
+  --name $CAE_NAME \
+  --resource-group $RG \
+  --storage-name $APP_NAME \
+  --azure-file-account-name $SA_NAME \
+  --azure-file-account-key "$SA_KEY" \
+  --azure-file-share-name $APP_NAME \
+  --access-mode ReadOnly
+```
+
+Verify that all four application modules were uploaded:
+
+```sh
+az storage file list \
+  --share-name $APP_NAME \
+  --connection-string "$CONN_STR" \
+  --query '[].name' \
+  --output table
+```
+
+## 6. Build the dependency image
+
+From the repository root:
+
+```sh
+az acr build \
+  --registry $ACR_NAME \
+  --image $APP_NAME:latest \
+  --file Dockerfile \
+  .
+```
+
+## 7. Provision the Agent 365 identity
+
+Install the Agent 365 CLI and verify tenant requirements:
 
 ```sh
 dotnet tool install --global Microsoft.Agents.A365.DevTools.Cli
-export PATH=$PATH:/home/system/.dotnet/tools/
+export PATH=$PATH:/home/system/.dotnet/tools
+
+a365 setup requirements
 ```
 
-> [!Tip]
->
-> Run `a365 setup requirements` to verify if the tenant has the necessary prerequisites (e.g. `Agent 365 CLI` app registration).
->
-> Read more about the prerequisites: https://github.com/joetanx/mslab/blob/main/agent-365/a365-cli.md
-
-### 4.2. Provision the agent in Agent 365
+Provision AutoSOC. The endpoint is registered as metadata for the agent identity; AutoSOC accepts its operational requests only at `/api/triage`.
 
 ```sh
-MESSAGING_ENDPOINT="https://$APP_NAME.$CAE_DOMAIN/api/messages"
-a365 setup all --aiteammate -n $APP_NAME --messaging-endpoint $MESSAGING_ENDPOINT
+export TRIAGE_ENDPOINT="https://$APP_NAME.$CAE_DOMAIN/api/triage"
+a365 setup all --aiteammate --agent-name $APP_NAME --messaging-endpoint $TRIAGE_ENDPOINT
 ```
 
-> [!Important]
->
-> Download the `a365.config.json` and `a365.generated.config.json` files from the cloud shell and keep them.
->
-> The a365 CLI references these config files to resume the work on the agent for future commands.
+Keep both generated files:
 
-Export variables:
+- `a365.config.json`
+- `a365.generated.config.json`
+
+Extract the stable values:
 
 ```sh
 export TENANT_ID=$(python3 -c "import json; print(json.load(open('a365.config.json'))['tenantId'])")
 export BLUEPRINT_CLIENT_ID=$(python3 -c "import json; print(json.load(open('a365.generated.config.json'))['agentBlueprintId'])")
 ```
 
-UAMI is used for Federated Identity Credential (FIC) for the blueprint, the `agentBlueprintClientSecret` can be discarded:
-
-> [!Note]
->
-> 1. `Application Administrator` or `Cloud Application Administrator` [Entra role required](https://learn.microsoft.com/en-us/graph/api/federatedidentitycredential-post#permissions) to add FIC to agent blueprint
->
->     In event of `Insufficient privilleges to complete the operation`, assign the permission and try:
->     - `az logout`, then `az login` to refresh the permissions
->     - If logging out and in didn't work, open a new tab of Azure portal or MAC, then open the cloud shell again
->
-> 2. The principal ID (not client ID) of the UAMI is used to assign FIC
+AutoSOC also needs the **agent identity/instance ID** and the **agentic user ID**. They are different from the blueprint ID. Agent 365 CLI output and generated field names can vary by version, so inspect the generated values:
 
 ```sh
-az ad app federated-credential create --id $BLUEPRINT_CLIENT_ID \
+a365 config display -g || jq . a365.generated.config.json
+```
+
+Set these values from the provisioning output:
+
+```sh
+export AGENTIC_INSTANCE_ID='<agent-identity-or-instance-id>'
+export AGENTIC_USER_ID=$(python3 -c "import json; print(json.load(open('a365.generated.config.json')).get('AgenticUserId', ''))")
+
+test -n "$AGENTIC_INSTANCE_ID" || { echo 'AGENTIC_INSTANCE_ID is required'; exit 1; }
+test -n "$AGENTIC_USER_ID" || { echo 'AgenticUserId is not available yet'; exit 1; }
+```
+
+`AgenticUserId` can be populated only after the agent instance is approved. If it is empty, complete the Agent 365 approval/activation flow in Microsoft 365 Admin Center, allow time for identity creation, then rerun or resume the Agent 365 setup and inspect the generated configuration again. Do not substitute `agentBlueprintId` for `AGENTIC_INSTANCE_ID`; observability rejects that mismatch.
+
+### 7.1. Add the UAMI federated credential
+
+The blueprint trusts the UAMI through a federated identity credential. Use the UAMI **principal ID** as the subject:
+
+```sh
+az ad app federated-credential create \
+  --id $BLUEPRINT_CLIENT_ID \
   --parameters '{
     "name": "containerapp-uami-fic",
     "issuer": "https://login.microsoftonline.com/'"$TENANT_ID"'/v2.0",
@@ -338,103 +298,160 @@ az ad app federated-credential create --id $BLUEPRINT_CLIENT_ID \
   }'
 ```
 
-### 4.3. Configure tools
+### 7.2. Grant Agent 365 observability permission
 
-List availables tools in the [Agent 365 tools catalog](https://learn.microsoft.com/en-us/microsoft-agent-365/tooling-servers-overview#agent-365-tools-catalog):
+From the directory containing the Agent 365 config files, run:
 
 ```sh
-a365 develop list-available
+a365 setup permissions bot --agent-name $APP_NAME
 ```
 
-Add desired tools to the agent, this generates the `ToolingManifest.json` file:
+If your CLI version does not expose that command, add both delegated and application `Agent365.Observability.OtelWrite` permissions to the blueprint app and grant admin consent. The Agent 365 resource application ID is `9b975845-388f-4429-889e-eab1ef63949c`.
+
+### 7.3. Grant Microsoft Graph permissions
+
+In Microsoft Entra admin center:
+
+1. Open **App registrations**, then select the blueprint whose application ID is `$BLUEPRINT_CLIENT_ID`.
+2. Open **API permissions** and add Microsoft Graph delegated permissions `SecurityIncident.ReadWrite.All` and `ThreatHunting.Read.All`.
+3. Grant tenant-wide administrator consent.
+4. Assign the provisioned agentic user the required Defender/Entra security role and verify it can access every hunting table listed in the prerequisites.
+
+AutoSOC requests `https://graph.microsoft.com/.default`, so missing consent does not appear until the first background triage exchanges and uses its Graph token.
+
+## 8. Configure the Logic App identity and API audience
+
+Enable a system-assigned or user-assigned managed identity on the Logic App and export its **client ID**:
 
 ```sh
-for mcp in mcp_M365Copilot mcp_TeamsServer mcp_MailTools mcp_CalendarTools mcp_WordServer mcp_MeServer; do
-  a365 develop add-mcp-servers $mcp
+export LOGIC_APP_MI_CLIENT_ID='<logic-app-managed-identity-client-id>'
+```
+
+Configure the blueprint app as the AutoSOC API audience. In its **Expose an API** page, set the application ID URI to:
+
+```text
+api://<BLUEPRINT_CLIENT_ID>
+```
+
+Configure the Logic App HTTP action that calls AutoSOC:
+
+| Setting | Value |
+| --- | --- |
+| Method | `POST` |
+| URI | `https://<APP_NAME>.<CAE_DOMAIN>/api/triage` |
+| Authentication | Managed identity |
+| Audience | `api://<BLUEPRINT_CLIENT_ID>` |
+| Header | `Content-Type: application/json` |
+| Body | `{"incidentId":"<Sentinel incident ID>"}` |
+
+If the API is configured to require assignment, define an application role for invocation and assign that role to the Logic App managed identity. AutoSOC independently enforces `AUTOSOC_CALLER_IDS`, so the managed identity client ID must match `LOGIC_APP_MI_CLIENT_ID` in the deployment manifest.
+
+The caller must send the Defender incident's Graph/Sentinel incident ID, not an alert ID or Azure resource ID.
+
+## 9. Deploy the Container App
+
+Confirm every manifest placeholder has a value:
+
+```sh
+for NAME in LOCATION RG APP_NAME UAMI_RSC_ID CAE_ID ACR_NAME \
+  FOUNDRY_PROJECT_ENDPOINT FOUNDRY_MODEL UAMI_CLIENT_ID \
+  ASSIGNEE_IN_PROGRESS ASSIGNEE_RESOLVED LOGIC_APP_MI_CLIENT_ID \
+  AGENTIC_INSTANCE_ID AGENTIC_USER_ID TENANT_ID BLUEPRINT_CLIENT_ID; do
+  test -n "$(printenv $NAME)" || { echo "Missing $NAME"; exit 1; }
 done
 ```
 
-> [!Note]
->
-> 1. These tools are now consider legacy:
->     - mcp_ExcelServer
->     - mcp_ODSPRemoteServer
->     - mcp_WebSearchTools
->     - mcp_SharePointListsTools
->
->     Below warning occurs when trying to add legacy tools (but still usable at the time of writing):
->
->     ```
->     uses a legacy ATG audience and may not work correctly. Consider re-running add-mcp-servers to pick up the latest catalog.
->     ```
->
-> 2. `mcp_SharePointRemoteServer` and `mcp_OneDriveRemoteServer` have identically named tools:
->     - `getFileOrFolderMetadataByUrl`
->     - `getSensitivityLabels`
->
->     Adding both MCP server can cause error in MAF:
->
->     ```
->     Duplicate tool name '<tool-name>'. Tools names must be unique. Consider setting `tool_name_prefix` on the MCPTool.
->     ```
-
-Verify/view the tools configured in `ToolingManifest.json`
+Substitute the environment variables and fail if any placeholder remains:
 
 ```sh
-a365 develop list-configured
-```
-
-Run `setup all` again, or `setup permissions mcp` to grant the permissions required by the tool
-
-```sh
-a365 setup permissions mcp -n $APP_NAME
-```
-
-### 4.4. Publish agent manifest in M365 Admin Center
-
-```sh
-a365 publish
-```
-
-This command generates the `manifest/manifest.zip` file, download it from the cloud shell.
-
-> [!Note]
->
-> To edit the manifest in the cloud shell:
-> 1. Use `Ctrl+Z` to send a365 CLI to background
-> 2. `vi manifest/manifest.json` to edit the manifest file (e.g. change name, descriptions)
-> 3. Exit vim with `:q`
-> 4. Use `fg` to continue the a365 CLI
-
-Upload the manifest to M365 Admin Center
-
-1. Go to https://admin.cloud.microsoft/#/agents/all
-2. From menu on top of the agents list, click the elipsis `…` and select `Add agent`
-3. `Choose file` to select the `manifest.zip` file
-4. Select the desired users or groups to `Activate` for
-5. Select the template to apply, review permission, then `Publish`
-
-> [!Note]
->
-> Before an agent template can be activated, a policy template of `Agents with their own identity` type must be created, and M365 licenses must be assigned to the policy template.
->
-> ![](https://github.com/user-attachments/assets/e3eccb2d-8d78-4831-a3a4-fb45b49230c8)
->
-> ![](https://github.com/user-attachments/assets/128b908a-8425-43fa-a301-400bd8243ec5)
->
-> ![](https://github.com/user-attachments/assets/7e7cf512-4530-44eb-aefb-dbae01db8cec)
-
-## 5. Deploy container app
-
-Download manifest template and replace placeholders with environment variables
-
-```sh
-curl -sLO https://github.com/joetanx/mslab/raw/refs/heads/main/agent-365/samples/$SAMPLE/containerapp.yaml
 envsubst < containerapp.yaml > containerapp-edited.yaml
+
+if grep -n '\${[^}]*}' containerapp-edited.yaml; then
+  echo 'Unresolved containerapp.yaml placeholders remain'
+  exit 1
+fi
+
+az containerapp create \
+  --name $APP_NAME \
+  --resource-group $RG \
+  --yaml containerapp-edited.yaml
 ```
 
-Deploy container app with edited manifest file:
+Get the deployed endpoint and check health:
 
 ```sh
-az containerapp create -n $APP_NAME -g $RG --yaml containerapp-edited.yaml
+export APP_FQDN=$(az containerapp show \
+  --name $APP_NAME --resource-group $RG \
+  --query properties.configuration.ingress.fqdn --output tsv)
+
+curl --fail-with-body "https://$APP_FQDN/api/health"
 ```
+
+Expected fields include `"status":"ok"`, `"agent_initialized":true`, and `"active_triages":0`.
+
+## 10. Validate an end-to-end triage
+
+1. Select a non-production Defender/Sentinel incident suitable for testing.
+2. Run the Logic App with that incident ID.
+3. Confirm the HTTP action receives `202 Accepted` with the same `incidentId`.
+4. Stream Container App logs:
+
+```sh
+az containerapp logs show \
+  --name $APP_NAME \
+  --resource-group $RG \
+  --follow
+```
+
+5. Confirm logs show context gathering, each hunt, and triage completion.
+6. Verify the incident has AutoSOC hunt comments and the expected status, assignment, classification, and determination.
+7. Verify Agent 365 telemetry is visible for the provisioned agent identity.
+
+The `202` response means only that work was accepted. Background failures are logged after the Logic App request has completed.
+
+## 11. Update application code
+
+For the current Azure Files development pattern, upload changed modules and restart the Container App revision:
+
+```sh
+az storage file upload-batch \
+  --destination $APP_NAME \
+  --source app \
+  --connection-string "$CONN_STR"
+
+az containerapp revision restart \
+  --name $APP_NAME \
+  --resource-group $RG \
+  --revision $(az containerapp revision list \
+    --name $APP_NAME --resource-group $RG \
+    --query '[?properties.active].name | [0]' --output tsv)
+```
+
+Rebuild the ACR image only when dependencies or the Dockerfile change.
+
+## 12. Troubleshooting
+
+| Symptom | Likely cause | Check |
+| --- | --- | --- |
+| Container fails during startup with `AUTOSOC_CALLER_IDS` error | Logic App client ID was empty during substitution | Inspect the Container App environment and `LOGIC_APP_MI_CLIENT_ID` |
+| `/api/triage` returns `401` | JWT signature or audience validation failed | Logic App authentication must use audience `api://<BLUEPRINT_CLIENT_ID>` |
+| `/api/triage` returns `403` | Valid token, but `azp`/`appid` is not allowlisted | Compare token caller claim with `AUTOSOC_CALLER_IDS` |
+| Request returns `202`, then triage fails immediately | Agent identity/user, FIC, Graph consent, or role is missing | Inspect logs around `get_agentic_user_token` |
+| Graph incident reads or updates return `403` | `SecurityIncident.ReadWrite.All` consent or security role is missing | Check blueprint delegated consent and agentic user role |
+| Hunting returns `403` or table errors | `ThreatHunting.Read.All` or table access is missing | Test access to all five query tables with the agentic identity |
+| Foundry model call fails | UAMI configuration, Foundry role, endpoint, or model name is wrong | Check `UAMI_CLIENT_ID`, Foundry role assignment, endpoint, and deployment |
+| Observability exporter returns `403 agent-ID-mismatch` | Blueprint ID was used as the agent instance ID | Set `AGENTIC_INSTANCE_ID` to the provisioned agent identity/instance ID |
+| Health endpoint works but source import fails after restart | Azure Files share is empty or mounted incorrectly | List the share and inspect the `/app` volume/storage registration |
+| Duplicate incidents run after restart | Duplicate tracking and checkpoints are in memory | This is expected; use durable orchestration for restart-safe idempotency |
+
+## 13. Production hardening
+
+Before production use:
+
+- Bake application source into an immutable image instead of mounting Azure Files read-only.
+- Add durable job state and idempotency if incidents must never be retriaged after restart.
+- Keep one replica unless shared concurrency and idempotency controls are added.
+- Configure network restrictions, private endpoints, and egress controls appropriate to the tenant.
+- Review model and telemetry data retention, region, redaction, and compliance settings.
+- Alert on background triage failures because the trigger already received `202`.
+- Pin and regularly update Python dependency versions.

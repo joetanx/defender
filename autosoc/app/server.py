@@ -1,9 +1,6 @@
 """Hosts the authenticated AutoSOC triage webhook on Azure Container Apps."""
 
-import asyncio
-import jwt
-import logging
-import sys
+import asyncio, jwt, logging, sys
 from os import environ
 from uuid import uuid4
 
@@ -30,28 +27,22 @@ class AutoSOCHost:
 
     def __init__(self) -> None:
         service_settings = agents_sdk_config["CONNECTIONS"]["SERVICE_CONNECTION"]["SETTINGS"]
-        client_id = environ["CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID"]
-        token_scope = environ.get("TRIAGE_AUTH_SCOPE", f"{client_id}/.default")
+        caller_token_scope = f"{environ['CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID']}/.default"
         self.auth_configuration = AgentAuthConfiguration(
             **service_settings,
-            scopes=[token_scope],
+            scopes=[caller_token_scope],
         )
         self.allowed_callers = {
             caller.strip()
-            for caller in environ.get("TRIAGE_ALLOWED_CALLER_APP_IDS", "").split(",")
+            for caller in environ.get("AUTOSOC_CALLER_IDS", "").split(",")
             if caller.strip()
         }
         if not self.allowed_callers:
-            raise ValueError("TRIAGE_ALLOWED_CALLER_APP_IDS must contain the Logic App identity client ID")
+            raise ValueError("AUTOSOC_CALLER_IDS must contain the Logic App identity client ID")
         self.observability_token: str | None = None
         self.agent = AutoSOCAgent()
         self.tasks: dict[str, asyncio.Task] = {}
-        logger.info("AutoSOC bearer validation configured scope=%s", token_scope)
-
-    async def initialize(self, _app: Application) -> None:
-        """Initialize Graph authorization before the service becomes ready."""
-        await self.agent.initialize()
-        logger.info("AutoSOC host initialized")
+        logger.info("AutoSOC bearer validation configured scope: %s", caller_token_scope)
 
     async def shutdown(self, _app: Application) -> None:
         """Cancel in-flight work during a replica shutdown."""
@@ -60,7 +51,7 @@ class AutoSOCHost:
             task.cancel()
         if active_tasks:
             await asyncio.gather(*active_tasks, return_exceptions=True)
-        logger.info("AutoSOC host stopped; cancelled_tasks=%d", len(active_tasks))
+        logger.info("🛑 AutoSOC host stopped; cancelled_tasks: %d", len(active_tasks))
 
     async def triage(self, request: Request) -> Response:
         """Validate a triage request, schedule it, and acknowledge immediately."""
@@ -140,32 +131,31 @@ class AutoSOCHost:
         caller_id = claims.get("azp") or claims.get("appid")
         return caller_id in self.allowed_callers
 
-    def create_app(self) -> Application:
+    def start_server(self):
         """Build the authenticated aiohttp application."""
-
-        @web_middleware
-        async def jwt_with_health_bypass(request, handler):
-            if request.path == "/api/health":
-                return await handler(request)
-            return await jwt_authorization_middleware(request, handler)
 
         async def health(_request: Request) -> Response:
             return json_response({
                 "status": "ok",
-                "agent_initialized": bool(self.agent._tools),
+                "agent_type": self.agent.__class__.__name__,
+                "agent_initialized": self.agent is not None,
                 "active_triages": len(self.tasks),
             })
+
+        @web_middleware
+        async def jwt_with_health_bypass(request, handler):
+            """Apply JWT authorization except for health checks."""
+            if request.path == "/api/health":
+                return await handler(request)
+            return await jwt_authorization_middleware(request, handler)
 
         app = Application(middlewares=[jwt_with_health_bypass])
         app.router.add_post("/api/triage", self.triage)
         app.router.add_get("/api/health", health)
         app["agent_configuration"] = self.auth_configuration
-        app.on_startup.append(self.initialize)
         app.on_shutdown.append(self.shutdown)
-        return app
 
-    def run(self) -> None:
-        """Run the AutoSOC web service."""
+        # Run the AutoSOC web service.
         use_microsoft_opentelemetry(
             enable_a365=True,
             a365_token_resolver=lambda agent_id, tenant_id: self.observability_token,
@@ -177,8 +167,9 @@ class AutoSOCHost:
                 "agent_framework": {"enabled": False},
             },
         )
+
         run_app(
-            self.create_app(),
+            app,
             host=environ.get("HOST", "0.0.0.0"),
             port=int(environ.get("PORT", "3978")),
             handle_signals=True,
@@ -187,7 +178,7 @@ class AutoSOCHost:
 
 def main() -> None:
     """Start the AutoSOC host."""
-    AutoSOCHost().run()
+    AutoSOCHost().start_server()
 
 
 if __name__ == "__main__":

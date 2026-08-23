@@ -1,314 +1,314 @@
-# AutoSOC LangGraph architecture
+# AutoSOC
 
-AutoSOC is an asynchronous Microsoft Defender incident-triage service. A Microsoft Sentinel automation rule is expected to invoke a Logic App playbook when an incident is created or updated. The Logic App sends the incident ID to an authenticated webhook in this Azure Container App. The service gathers the incident, runs five hunts in parallel, asks a model to assess the combined evidence, and writes the result back through Microsoft Graph.
+AutoSOC is an authenticated webhook service that performs asynchronous triage of a Microsoft Defender/Sentinel incident. It retrieves the incident through Microsoft Graph Security, runs five parallel hunting branches, asks a model for a structured assessment, and applies the resulting assignment, status, classification, and comments back to the incident.
 
-This document describes the behavior implemented in this folder. The Sentinel automation rule and Logic App are external prerequisites; their definitions are not included in the sample.
+The host and deployment pattern are adapted from the Microsoft Agent 365 Python LangChain sample. AutoSOC retains its Azure Container Apps hosting, Microsoft Agents authentication, Foundry model, managed identity, and Microsoft OpenTelemetry integration, while replacing conversational message handling and MCP tools with a Logic App webhook, LangGraph orchestration, and direct Microsoft Graph Security tools.
 
-## 1. End-to-end flow
+Use [SETUP.md](SETUP.md) to provision and deploy the service. This document describes behavior visible in this repository. The Sentinel automation rule and Logic App definitions are not included, so their exact triggers, actions, retry policy, and request configuration must be verified in Azure.
 
-```mermaid
-sequenceDiagram
-    participant Sentinel as Microsoft Sentinel
-    participant Rule as Automation rule
-    participant LA as Logic App playbook
-    participant Entra as Microsoft Entra ID
-    participant API as AutoSOC webhook
-    participant LG as LangGraph workflow
-    participant Graph as Microsoft Graph Security
-    participant Foundry as Azure AI Foundry model
+## Agent 365 LangChain pattern
 
-    Sentinel->>Rule: Incident created or updated
-    Rule->>LA: Run playbook with incident data
-    LA->>Entra: Request token for TRIAGE_AUTH_SCOPE
-    Entra-->>LA: Webhook access token
-    LA->>API: POST /api/triage { incidentId }
-    API->>API: Validate signature, audience, and caller app ID
-    API-->>LA: 202 Accepted
-    API->>LG: Start background triage
-    LG->>Graph: Read incident and alerts
-    Graph-->>LG: Incident and alert entities
-    par Five independent hunts
-        LG->>Graph: Run related-alert KQL
-        LG->>Graph: Run threat-intel KQL
-        LG->>Graph: Run Windows sign-in KQL
-        LG->>Graph: Run Linux sign-in KQL
-        LG->>Graph: Run Entra sign-in KQL
-    end
-    Graph-->>LG: Hunting results
-    LG->>Foundry: Normalize hunt evidence and assess incident
-    Foundry-->>LG: Structured assessment
-    LG->>Graph: Update incident and add comments
-```
+| Sample pattern | AutoSOC adaptation |
+| --- | --- |
+| `aiohttp` host on Azure Container Apps | `aiohttp` exposes `/api/triage` and `/api/health` |
+| Microsoft Agents SDK JWT middleware | Validates the inbound bearer token; AutoSOC also allowlists the Logic App client ID |
+| Foundry model through `init_chat_model` and `ManagedIdentityCredential` | Used by one tool-calling context agent and structured-output hunt/assessment models |
+| Agent 365 MCP tools loaded per turn | Replaced by Graph Security tools bound to an agentic Graph token per triage |
+| LangChain agent invocation | Replaced by a checkpointed LangGraph with five parallel hunting branches |
+| Microsoft OpenTelemetry LangChain instrumentation | Retained, with explicit Agent 365 identity baggage for webhook-triggered work |
+| Azure Files development mount | Retained: the image contains dependencies and `/app` supplies source files |
 
-The Logic App should:
-
-1. Be triggered by a Sentinel automation rule and obtain the Sentinel incident ID from the playbook trigger body.
-2. Use its managed identity to request an access token for `TRIAGE_AUTH_SCOPE`, configured by default as `api://<blueprint-client-id>/.default`.
-3. Send `POST https://<container-app>/api/triage` with `Authorization: Bearer <token>` and a JSON body such as:
-
-   ```json
-   {
-     "incidentId": "12345"
-   }
-   ```
-
-The webhook responds immediately with `202 Accepted`; this means work was scheduled, not that triage succeeded. There is no job-status endpoint or callback in this sample. The final result is visible on the Defender/Sentinel incident and in application telemetry.
-
-### 1.1. Webhook authentication
-
-Two checks protect `/api/triage`:
-
-1. The Microsoft Agents SDK JWT middleware validates the bearer token, including its cryptographic signature and configured audience/scope.
-2. `_is_allowed_caller` reads the already-validated token's `azp` or `appid` claim and requires it to be in `TRIAGE_ALLOWED_CALLER_APP_IDS`.
-
-`GET /api/health` bypasses bearer authentication and reports initialization state and the number of locally active triages. Invalid JSON or a missing `incidentId` returns `400`; an unapproved caller returns `403`.
-
-Duplicate requests for the same incident are coalesced only while that incident is active in the current process. A duplicate receives `202` with `"duplicate": true`.
-
-## 2. LangGraph triage flow
+## System overview
 
 ```mermaid
 flowchart LR
-    S([START]) -->|"incident_id;<br>hunting_results=[]"| C[context]
-    C -->|IncidentContext| RA[related_alerts]
-    C -->|IncidentContext| TI[threat_intel]
-    C -->|IncidentContext| WS[windows_signin]
-    C -->|IncidentContext| LS[linux_signin]
-    C -->|IncidentContext| ES[entra_signin]
-    RA -->|one HuntReport| A[assessment]
-    TI -->|one HuntReport| A
-    WS -->|one HuntReport| A
-    LS -->|one HuntReport| A
-    ES -->|one HuntReport| A
-    A -->|AssessmentDecision| E([END])
+    S[Microsoft Sentinel incident] -->|Automation rule or playbook trigger| L[Logic App]
+    L -->|"POST /api/triage<br/>Bearer token<br/>{ incidentId }"| W[AutoSOC webhook]
+    W -->|202 Accepted| L
+    W -.->|Background task| G[LangGraph triage]
+    G -->|Incident reads, hunts,<br/>comments, updates| MS[Microsoft Graph Security]
+    G -->|Prompts and structured output| AI[Azure AI Foundry model]
+    W -->|LangChain telemetry| OT[Microsoft Agent 365 observability]
 ```
 
-### 2.1. Node classification
+The application runs as an `aiohttp` service in Azure Container Apps. It exposes:
 
-In LangGraph, every named box is technically a graph node, but not every node is an autonomous agent.
+| Endpoint | Authentication | Purpose |
+| --- | --- | --- |
+| `POST /api/triage` | Bearer JWT plus caller allowlist | Validate and enqueue an incident triage |
+| `GET /api/health` | None | Report process health and active triage count |
 
-| Node | Classification | Model use | Tool use | Output |
-|---|---|---|---|---|
-| `context` | **Agent node** | The model reasons over tool output and produces `IncidentContext` | The agent may call `get_incident_with_alerts` | `context: IncidentContext` |
-| `related_alerts` | **Hybrid orchestration node**, not an agent | Converts raw query output into a structured `HuntReport` | Direct calls to `run_hunting_query` and `add_incident_comment` | One `HuntReport` |
-| `threat_intel` | **Hybrid orchestration node**, not an agent | Same normalization role | Direct calls to `run_hunting_query` and `add_incident_comment` | One `HuntReport` |
-| `windows_signin` | **Hybrid orchestration node**, not an agent | Same normalization role | Direct calls to `run_hunting_query` and `add_incident_comment` | One `HuntReport` |
-| `linux_signin` | **Hybrid orchestration node**, not an agent | Same normalization role | Direct calls to `run_hunting_query` and `add_incident_comment` | One `HuntReport` |
-| `entra_signin` | **Hybrid orchestration node**, not an agent | Same normalization role | Direct calls to `run_hunting_query` and `add_incident_comment` | One `HuntReport` |
-| `assessment` | **Hybrid orchestration node**, not an agent | Produces a structured `AssessmentDecision` from all evidence | Direct calls to `update_incident`, then sometimes `add_incident_comment` | `assessment: AssessmentDecision` |
-| `START`, `END` | Virtual routing nodes | None | None | Graph entry and exit |
+The triage request body is:
 
-Only `context` is created with LangChain `create_agent`, so it has a model-controlled tool loop. The hunt and assessment nodes call a model and tools in a fixed order chosen by Python code. This is a deliberate control boundary: the model interprets evidence, while query construction and Defender mutations remain deterministic.
+```json
+{
+  "incidentId": "12345"
+}
+```
 
-### 2.2. State and edge data
+An accepted request receives HTTP `202` immediately. Triage continues in an in-process `asyncio` task; the HTTP response does not contain the final assessment.
 
-The shared `TriageState` contains:
-
-| Field | Type | Producer | Consumers |
-|---|---|---|---|
-| `incident_id` | `str` | Webhook invocation | Context node and workflow logging |
-| `context` | `IncidentContext` | Context node | All five hunt nodes and assessment |
-| `hunting_results` | `list[HuntReport]` with additive reducer | Initialized by `triage`; each hunt appends one report | Assessment |
-| `assessment` | `AssessmentDecision` | Assessment node | Graph caller/final checkpoint |
-
-Edge behavior is as follows:
-
-1. `START -> context`: carries the incident ID and an empty hunt-result list.
-2. `context -> each hunt`: fans out the same validated `IncidentContext`. The hunt nodes execute concurrently.
-3. `all hunts -> assessment`: this list-form LangGraph edge is a barrier; assessment starts after all five source nodes finish. Each branch returns a one-element list, and `operator.add` merges those lists without concurrent overwrite.
-4. `assessment -> END`: carries the original state plus the final structured decision.
-
-Each hunt returns exactly one report even when it does not query Graph:
-
-- `completed`: a query ran and the model summarized its output.
-- `skipped`: the incident lacked the entity types needed to build that query.
-- `failed`: query, model, or node processing raised an exception. Only the exception type is placed in the summary.
-
-Comment creation failure is logged but does not change an otherwise completed hunt to failed. In contrast, the assessment's incident update is required; an update failure fails the workflow.
-
-## 3. Model responsibilities
-
-The same Foundry chat model deployment is reused in three modes:
-
-- **Context agent:** fetches the incident and alerts, copies observed entity values, and emits `IncidentContext`.
-- **Hunt report models:** one structured-output binding per hunt converts raw Graph results into `HuntReport`. These models do not choose or generate the KQL.
-- **Assessment model:** emits `AssessmentDecision` using only the context and all hunt reports.
-
-Pydantic schemas constrain model output. The code also overwrites `context.incident_id`, `report.hunter`, and `report.status` with authoritative values so the model cannot alter routing identity or execution status.
-
-The context prompt treats incident text as untrusted data and tells the model not to execute embedded instructions. KQL values are generated by code, deduplicated, length-limited to 2,048 characters, and escaped rather than copied into free-form model-generated queries.
-
-## 4. Hunting nodes and tools
-
-### 4.1. Related alerts
-
-- Required entities: any IP, domain, URL, file hash, hostname, user, or UPN.
-- Tool: `run_hunting_query` over `SecurityAlert`.
-- Behavior: excludes the current incident and searches `Entities` for any incident entity, then summarizes matching alert metadata.
-- Timespan: `HUNT_TIMESPAN`, default `P7D`.
-
-### 4.2. Threat intelligence
-
-- Required entities: IPs, domains, URLs, or file hashes.
-- Tool: `run_hunting_query` over `ThreatIntelIndicators`.
-- Behavior: case-insensitively matches `ObservableValue` and keeps the latest record per observable.
-- Timespan: fixed to `P30D`.
-
-### 4.3. Windows sign-ins
-
-- Required entities: hostnames or users.
-- Tool: `run_hunting_query` over `SecurityEvent`.
-- Behavior: finds failed logons (`EventID == 4625`) and summarizes accounts by computer and activity.
-- Timespan: `HUNT_TIMESPAN`, default `P7D`.
-
-### 4.4. Linux sign-ins
-
-- Required entities: hostnames or users.
-- Tool: `run_hunting_query` over `Syslog`.
-- Behavior: finds `sshd` failed-password messages in `auth`/`authpriv` and summarizes messages by host.
-- Timespan: `HUNT_TIMESPAN`, default `P7D`.
-
-### 4.5. Entra sign-ins
-
-- Required entities: users or UPNs.
-- Tool: `run_hunting_query` over `SigninLogs`.
-- Behavior: finds failures and summarizes result descriptions and source IPs by identity and UPN.
-- Timespan: `HUNT_TIMESPAN`, default `P7D`.
-
-All completed hunts attempt to add a concise incident comment after model normalization. Raw query text sent to a hunt model is truncated to `MAX_HUNT_RESULT_CHARS`, default 24,000 characters. This controls model context size, but it can omit evidence from large result sets.
-
-## 5. Graph tool catalog
-
-`create_graph_security_tools` registers six LangChain tools around `GraphServiceClient`:
-
-| Tool | Graph operation | Used by this workflow |
-|---|---|---|
-| `get_incident_with_alerts` | GET one incident, then list alerts filtered by incident ID | Yes, model-selected by context agent |
-| `run_hunting_query` | POST a KQL query to `security/runHuntingQuery` | Yes, direct from every non-skipped hunt |
-| `add_incident_comment` | POST to `/security/incidents/{id}/comments` | Yes, direct from completed hunts and escalated assessment |
-| `update_incident` | PATCH `/security/incidents/{id}` | Yes, direct from assessment |
-| `list_incidents` | List recent incidents with `$filter` and `$top` | No |
-| `list_alerts_associated_with_incident` | List alerts filtered by incident ID | No; context uses the combined fetch tool |
-
-The context fetch retries up to `INCIDENT_FETCH_ATTEMPTS` (default 5) with exponential delays based on `INCIDENT_FETCH_DELAY_SECONDS` (default 15), capped at 60 seconds. The other Graph calls do not implement application-level retries.
-
-The Graph SDK objects are converted to JSON-compatible values before they are returned to models. Enum values and dates are normalized; SDK backing-store fields are recursively serialized.
-
-## 6. Assessment and incident mutations
-
-| Model category | Defender status | Classification | Determination | Assignment |
-|---|---|---|---|---|
-| `false_positive` | `resolved` | `falsePositive` | Allowed benign value; fallback `notEnoughDataToValidate` | `ASSIGNEE_RESOLVED` |
-| `benign_true_positive` | `resolved` | `informationalExpectedActivity` | Allowed benign value; fallback `confirmedUserActivity` | `ASSIGNEE_RESOLVED` |
-| `true_positive` | `inProgress` | `truePositive` | Allowed malicious value; fallback `maliciousUserActivity` | `ASSIGNEE_IN_PROGRESS` |
-| `suspicious` | `inProgress` | Unchanged | Unchanged | `ASSIGNEE_IN_PROGRESS` |
-
-Resolved incidents receive the assessment summary as `resolving_comment`. True-positive and suspicious incidents receive a separate incident comment. The deterministic mapping validates model-selected determinations against benign and malicious allowlists before making the Graph update.
-
-## 7. Authentication and token exchange
-
-The complete system uses four token purposes:
+### Startup flow
 
 ```mermaid
 flowchart TD
-    LAMI[Logic App managed identity] -->|audience: TRIAGE_AUTH_SCOPE| W[1. Webhook bearer token]
-    W --> API[AutoSOC API]
-
-    CUAMI[Container App UAMI] -->|ManagedIdentityCredential| F[2. Foundry access token]
-    F --> Model[Foundry model]
-
-    SDK[Agent 365 SERVICE_CONNECTION] -->|get_agentic_user_token| G[3. Graph API token]
-    G -->|scope: https://graph.microsoft.com/.default| Graph[Microsoft Graph]
-
-    SDK -->|get_agentic_user_token| O[4. Observability token]
-    O -->|Microsoft observability scope| Telemetry[Agent 365 telemetry exporter]
+    A[server.py] --> B[Load Microsoft Agents configuration]
+    B --> C[Construct AutoSOCHost]
+    C --> D[Create AgentAuthConfiguration]
+    C --> E[Create AutoSOCAgent and compile LangGraph]
+    C --> F[Configure Microsoft OpenTelemetry]
+    C --> G[Register /api/triage and /api/health]
+    G --> H[Start aiohttp on HOST:PORT]
 ```
 
-### 7.1. Webhook bearer token
+The model and graph are created during host startup. Graph Security clients and tools are created immediately before each triage so they use the current exchanged token.
 
-- Issuer/requester: Microsoft Entra ID / Logic App managed identity.
-- Audience: `TRIAGE_AUTH_SCOPE`.
-- Purpose: authenticate and authorize the inbound Logic App call.
-- It is not created by `token_manager.py` and is not reused for Graph.
+## Trigger flow
 
-### 7.2. Foundry model token
+The intended end-to-end trigger is:
 
-- Credential: the Container App user-assigned managed identity (`UAMI_CLIENT_ID`).
-- Acquired by: Azure Identity through `ManagedIdentityCredential` in the chat model client.
-- Purpose: call the Foundry project/model endpoint.
-- This is ordinary managed-identity authentication, not Agent User token exchange.
+1. A Microsoft Sentinel incident satisfies an automation rule or starts a playbook. This configuration is external to this repository.
+2. The Logic App's managed identity requests an access token for the AutoSOC API audience.
+3. The Logic App sends `POST /api/triage` with that token in `Authorization: Bearer ...` and the incident ID in the JSON body.
+4. The Microsoft Agents SDK middleware validates the token according to `AgentAuthConfiguration`, including its signature and audience.
+5. AutoSOC separately decodes the already-validated token and requires its `azp` or `appid` claim to appear in `AUTOSOC_CALLER_IDS`.
+6. AutoSOC validates `incidentId`. If no run for that ID is active in this replica, it creates a unique LangGraph thread ID and schedules a background task.
+7. The webhook returns `202 Accepted`. A duplicate request for an incident already active in the same replica also returns `202`, with `duplicate: true`, and does not start another run.
+8. The background task acquires an observability token and invokes the triage graph.
+9. Graph tools read from and write to the Microsoft Defender incident through Microsoft Graph Security.
 
-### 7.3. Microsoft Graph token
+### Delivery and duplicate behavior
 
-- Acquired through: `MsalConnectionManager` and `SERVICE_CONNECTION` using `get_agentic_user_token`.
-- Identity context: tenant ID, `AGENTIC_INSTANCE_ID`, and `AGENTIC_USER_ID`.
-- Scope: `https://graph.microsoft.com/.default`.
-- Purpose: all Defender incident, alert, hunting, comment, and update operations.
+Duplicate suppression is local to one process and lasts only while its task is running. It is not a durable idempotency mechanism. A restart loses the task table, and multiple replicas would have independent tables. The deployment currently limits the app to one replica, which makes this local approach effective during normal operation but not across restarts.
 
-### 7.4. Observability token
+The service also uses an `asyncio.Lock`, so only one triage graph runs at a time. Different incident requests can be accepted concurrently, but their graph runs queue inside the process. This protects mutable per-run tool and token fields, at the cost of throughput.
 
-- Acquired through the same Agent User exchange mechanism as the Graph token.
-- Scope: returned by `get_observability_authentication_scope()`.
-- Purpose: Agent 365/Microsoft OpenTelemetry export only.
-- It is resolved by the A365 telemetry exporter and is not a Graph credential.
+## LangGraph triage flow
 
-`token_manager.py` caches exchanged tokens in process memory by tenant, agent instance, agent user, and exact scope tuple. A token is refreshed when its unsigned `exp` claim has no more than `TOKEN_REFRESH_BUFFER_SECONDS` remaining, default 300 seconds. Decoding without signature verification here is used only to read cache expiry; token validation remains the resource server's responsibility.
+```mermaid
+flowchart LR
+    START((START)) --> C[context]
+    C --> RA[related_alerts]
+    C --> TI[threat_intel]
+    C --> WS[windows_signin]
+    C --> LS[linux_signin]
+    C --> ES[entra_signin]
+    RA --> A[assessment]
+    TI --> A
+    WS --> A
+    LS --> A
+    ES --> A
+    A --> END((END))
+```
 
-One implementation detail matters operationally: the Graph client is created once during application startup with the then-current raw token, and `RawAccessTokenProvider` always returns that same token. The token manager can refresh a token only when `_get_graph_client` is called again, which this workflow does not currently do. A long-running replica can therefore retain an expired Graph token even though the cache helper supports refresh.
+The graph is compiled with an in-memory checkpointer. Every invocation receives a unique `thread_id`, but checkpoints do not survive process or replica restarts.
 
-## 8. Runtime and deployment
+### State schema
 
-The sample runs as a non-root Python container on port 3978. Azure Container Apps ingress is external and HTTPS-only. The manifest fixes scaling at one replica and mounts the application source from a read-only Azure Files share; the image contains dependencies but does not bake in application code.
+`TriageState` carries these fields:
 
-Startup order is significant:
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `incident_id` | `str` | ID supplied by the webhook |
+| `context` | `IncidentContext` | Model-normalized overview and entities from the incident and alerts |
+| `hunting_results` | `list[HuntReport]` | Parallel branch reports, merged with list addition |
+| `assessment` | `AssessmentDecision` | Final structured category, determination, and summary |
 
-1. Construct the Foundry model and compile the LangGraph workflow.
-2. During aiohttp startup, exchange the Graph token, construct all Graph tools, and bind the context agent.
-3. Report healthy only after startup completes; `agent_initialized` reflects whether tools were loaded.
-4. For every accepted request, exchange or reuse the observability token and invoke the graph in a background asyncio task.
+`IncidentContext.entities` can contain IP addresses, domains, URLs, file hashes, hostnames, users, and UPNs. `HuntReport` records the hunter name, `completed`/`skipped`/`failed` status, summary, and evidence strings.
 
-The graph uses `InMemorySaver`. A unique thread ID is generated for every request (`incident:<id>:run:<uuid>`), so checkpoints are useful for inspecting one live run but do not provide durable recovery or resume after restart.
+### Node and edge contracts
 
-## 9. Configuration reference
+| Node | Kind | Input | Work performed | State output |
+| --- | --- | --- | --- | --- |
+| `context` | Tool-calling LangChain agent inside a LangGraph function node | `incident_id` | The model may call `get_incident_with_alerts`; structured output is validated as `IncidentContext` | `context` |
+| `related_alerts` | Composite deterministic/tool/model node | `context` | Builds KQL, calls `run_hunting_query`, asks a structured-output model to summarize, then attempts `add_incident_comment` | One `HuntReport` appended to `hunting_results` |
+| `threat_intel` | Composite deterministic/tool/model node | `context` | Same pattern, using threat-intelligence KQL and a fixed 30-day timespan | One `HuntReport` appended |
+| `windows_signin` | Composite deterministic/tool/model node | `context` | Hunts failed Windows logons and summarizes results | One `HuntReport` appended |
+| `linux_signin` | Composite deterministic/tool/model node | `context` | Hunts failed SSH logons and summarizes results | One `HuntReport` appended |
+| `entra_signin` | Composite deterministic/tool/model node | `context` | Hunts failed Entra sign-ins and summarizes results | One `HuntReport` appended |
+| `assessment` | Structured-output model plus deterministic tool calls | `context`, all `hunting_results` | Produces `AssessmentDecision`, maps it to allowed Defender fields, calls `update_incident`, and conditionally adds a comment | `assessment` |
 
-| Variable | Purpose |
-|---|---|
-| `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_MODEL` | Foundry model connection |
-| `UAMI_CLIENT_ID` | Managed identity used for Foundry and federated service connection |
-| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__*` | Microsoft Agents SDK authority, client, federation, tenant, and scopes |
-| `AGENTIC_INSTANCE_ID`, `AGENTIC_USER_ID` | Agent identity context for Agent User token exchange |
-| `TRIAGE_AUTH_SCOPE` | Expected webhook token scope/audience |
-| `TRIAGE_ALLOWED_CALLER_APP_IDS` | Comma-separated Logic App managed-identity client IDs |
-| `ASSIGNEE_IN_PROGRESS`, `ASSIGNEE_RESOLVED` | Defender routing targets |
-| `HUNT_TIMESPAN` | Default hunt window; threat intel remains `P30D` |
-| `MAX_HUNT_RESULT_CHARS` | Maximum raw hunt-result characters sent to each model |
-| `INCIDENT_FETCH_ATTEMPTS`, `INCIDENT_FETCH_DELAY_SECONDS` | Incident-read retry policy |
-| `TOKEN_REFRESH_BUFFER_SECONDS` | Exchanged-token early-refresh window |
-| `ENABLE_OBSERVABILITY`, `ENABLE_A365_OBSERVABILITY_EXPORTER` | Agent 365 telemetry enablement |
-| `HOST`, `PORT` | aiohttp listener settings |
+The hunting nodes are not autonomous agents in the LangChain `create_agent` sense. Each is orchestration code that deterministically selects a query and tool, then uses the model only to normalize the raw result into `HuntReport`. The assessment node is also not a tool-calling agent: the model returns a typed decision, after which application code controls all writes.
 
-The supplied `containerapp.yaml` does not currently declare `AGENTIC_INSTANCE_ID` or `AGENTIC_USER_ID`; they must be injected by the deployment/provisioning process or added to the manifest. Without them, Graph and observability Agent User exchange may fail, depending on SDK configuration.
+Edge data flow is:
 
-## 10. Design rationale and operational caveats
+| Edge | Data available to destination |
+| --- | --- |
+| `START -> context` | Initial `incident_id` and empty `hunting_results` |
+| `context -> each hunter` | Shared `incident_id`, normalized `context`, and current state |
+| `all hunters -> assessment` | `context` plus the five merged `HuntReport` values; the fan-in waits for every branch |
+| `assessment -> END` | Complete state including `assessment` |
 
-- **Deterministic side effects:** models classify and summarize, but Python controls KQL templates, assignment, allowed determinations, and Graph writes. This reduces prompt-injection and accidental-mutation risk.
-- **Parallel hunts:** the five hunts depend only on shared context, so fan-out reduces latency. The assessment barrier guarantees a complete set of five reports, including skipped and failed reports.
-- **Asynchronous acknowledgement:** returning `202` keeps the Logic App call short, but the in-process task has no durable queue. Container restart or scale-in cancels active triage and there is no automatic replay in this sample.
-- **Single-replica assumptions:** duplicate suppression, task tracking, checkpoints, token cache, and the observability token are all process-local. Raising `maxReplicas` would make those behaviors inconsistent across replicas without shared storage or a queue.
-- **Concurrent observability token storage:** `AutoSOCHost.observability_token` is one mutable value shared by all active tasks, and the resolver ignores its `agent_id` and `tenant_id` arguments. This is acceptable only while all work uses one tenant/agent identity and the same scope.
-- **No workflow timeout:** individual model and Graph calls have no explicit timeout at this layer. A stuck call can leave a task active indefinitely.
-- **Partial evidence:** failed hunts do not stop assessment. The prompt tells the assessor not to close an incident merely because a hunt returned no results, but there is no deterministic rule preventing closure when one or more hunts failed.
-- **Graph permissions:** the Agent User must have delegated access sufficient to read incidents and alerts, run hunting queries, update incidents, and add comments. Exact consent requirements should be verified against the tenant's current Microsoft Graph Security API documentation.
-- **Development-oriented source mount:** mounting code from Azure Files is convenient for samples but produces mutable deployments. Production should bake versioned source into the image and deploy an immutable image tag.
+A hunter with no required entity type returns `skipped` without calling Graph or the model. A failed hunt returns `failed`; it does not abort other branches or assessment. Failure to add an individual hunt comment is logged but does not fail that hunt. By contrast, failure of the final incident update propagates and fails the graph run.
 
-## 11. Source map
+## Hunting branches
+
+The application constructs KQL itself. Incident text cannot directly supply executable KQL; extracted values are trimmed, deduplicated, length-limited, and escaped or JSON-encoded before interpolation.
+
+| Hunter | Data source | Entity requirement | Query purpose | Timespan |
+| --- | --- | --- | --- | --- |
+| `related_alerts` | `SecurityAlert` | Any supported entity | Find other incidents' alerts containing the same entity values | `HUNT_TIMESPAN`, default `P7D` |
+| `threat_intel` | `ThreatIntelIndicators` | IP, domain, URL, or hash | Match observable values and retain the latest indicator record | Fixed `P30D` |
+| `windows_signin` | `SecurityEvent` | Hostname or user | Find Windows event ID 4625 failures | `HUNT_TIMESPAN` |
+| `linux_signin` | `Syslog` | Hostname or user | Find `sshd` failed-password events | `HUNT_TIMESPAN` |
+| `entra_signin` | `SigninLogs` | User or UPN | Find failed Entra sign-ins | `HUNT_TIMESPAN` |
+
+Raw hunt output supplied to the model is truncated to `MAX_HUNT_RESULT_CHARS`, default `24000`. This limits prompt size but means evidence after that character boundary cannot affect the report.
+
+## Assessment and incident updates
+
+The model selects one of four categories. Application code then enforces the actual Defender update:
+
+| Category | Defender status | Classification | Determination fallback | Assignment |
+| --- | --- | --- | --- | --- |
+| `false_positive` | `resolved` | `falsePositive` | `notEnoughDataToValidate` | `ASSIGNEE_RESOLVED` |
+| `benign_true_positive` | `resolved` | `informationalExpectedActivity` | `confirmedUserActivity` | `ASSIGNEE_RESOLVED` |
+| `true_positive` | `inProgress` | `truePositive` | `maliciousUserActivity` | `ASSIGNEE_IN_PROGRESS` |
+| `suspicious` | `inProgress` | Unchanged | Not sent | `ASSIGNEE_IN_PROGRESS` |
+
+Resolved incidents receive a resolving comment as part of the update. `true_positive` and `suspicious` incidents receive a separate assessment comment. Determinations outside the category's allowlisted set are replaced with the fallback shown above.
+
+This division is an important safety boundary: the model proposes a typed decision, but deterministic code constrains the possible side effects and enum values.
+
+## Graph tools
+
+All four tools share one `GraphServiceClient` created for the current triage and bound to a Graph access token.
+
+### `get_incident_with_alerts`
+
+- Filters `/security/incidents` by the requested ID and expands `alerts`.
+- Retries when the incident is not yet visible in Graph, accounting for ingestion delay.
+- Defaults to five attempts, a 15-second initial delay, exponential backoff, and a 60-second delay cap.
+- Returns serialized Graph JSON to the context agent.
+
+### `run_hunting_query`
+
+- Calls the Microsoft Graph Security `runHuntingQuery` action.
+- Accepts application-generated KQL and an ISO 8601 duration.
+- Returns serialized result rows to the selected hunt node.
+
+The token identity therefore needs access not only to Defender incidents but also to every table queried by the hunting API.
+
+### `add_incident_comment`
+
+- Posts an `AlertComment` payload to `/v1.0/security/incidents/{id}/comments`.
+- Is used after each completed hunt and after suspicious or true-positive assessment.
+
+### `update_incident`
+
+- Patches only supplied incident fields.
+- Parses status, classification, and determination through generated Graph SDK enums.
+- Rejects calls with no updates and invalid enum values.
+- Is invoked only by deterministic assessment code, not directly at the model's discretion.
+
+## Authentication and token exchange
+
+There are **two token audiences acquired through `get_agentic_user_token`**, but there are more than two token roles in the complete system.
+
+```mermaid
+sequenceDiagram
+    participant LA as Logic App managed identity
+    participant API as AutoSOC webhook
+    participant CM as SERVICE_CONNECTION / MSAL
+    participant OTel as A365 observability
+    participant Graph as Microsoft Graph
+    participant Foundry as Azure AI Foundry
+
+    LA->>API: Inbound API bearer token
+    API->>API: SDK JWT validation + azp/appid allowlist
+    API->>CM: Exchange for observability scopes
+    CM-->>API: Observability access token
+    API->>OTel: Export telemetry with token
+    API->>CM: Exchange for graph.microsoft.com/.default
+    CM-->>API: Graph access token
+    API->>Graph: Security read/write and hunting calls
+    API->>Foundry: Model calls via ManagedIdentityCredential
+```
+
+### Token roles
+
+| Role | Obtained by | Audience/scope | Used for |
+| --- | --- | --- | --- |
+| Inbound webhook token | Logic App managed identity | AutoSOC API application ID URI | Authenticating and authorizing `POST /api/triage` |
+| Observability exchange token | `token_manager.get_token` | `get_observability_authentication_scope()` | Microsoft Agent 365/OpenTelemetry export |
+| Graph exchange token | `token_manager.get_token` | `https://graph.microsoft.com/.default` | Graph Security incident, comment, update, and hunting operations |
+| Foundry token | Azure Identity internally | Azure AI Foundry resource scope selected by the SDK | Chat-model inference |
+
+So the original understanding is correct only when counting tokens produced by the explicit **agentic user token exchange**: one observability token and one Graph token. The inbound API token is independently issued to the Logic App, and model authentication obtains another access token internally through `ManagedIdentityCredential`. Container Registry image pulls also use the user-assigned identity at the infrastructure layer.
+
+### Exchange and cache behavior
+
+`token_manager.py` creates an MSAL `SERVICE_CONNECTION` from environment configuration and calls `get_agentic_user_token` with tenant ID, agent app instance ID, agentic user ID, and requested scopes. Tokens are cached in process by all four values. A cached JWT is reused only when its `exp` claim is more than `TOKEN_REFRESH_BUFFER_SECONDS` away; the default refresh buffer is 15 minutes.
+
+Graph tools are recreated before every triage, but a still-valid cached Graph token can be reused. The observability token is refreshed before every graph invocation through the same cache logic and exposed to the telemetry exporter through a resolver callback.
+
+## Configuration
+
+Important runtime settings include:
+
+| Setting | Required/default | Purpose |
+| --- | --- | --- |
+| `HOST` | `0.0.0.0` | HTTP bind address |
+| `PORT` | `3978` | HTTP listener and Container Apps ingress port |
+| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID` | Required | AutoSOC/blueprint client ID and inbound audience basis |
+| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID` | Required for exchange | Tenant passed to agentic token exchange |
+| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__*` | Required | Federated `SERVICE_CONNECTION` configuration |
+| `AUTOSOC_CALLER_IDS` | Required | Comma-separated allowed Logic App client IDs |
+| `AGENTIC_INSTANCE_ID` | Required | Provisioned Agent 365 agent identity/instance ID; this is not the blueprint client ID |
+| `AGENTIC_USER_ID` | Required | `AgenticUserId` created for the approved agent instance |
+| `FOUNDRY_PROJECT_ENDPOINT` | Required | Azure AI Foundry project endpoint |
+| `FOUNDRY_MODEL` | Required | Model deployment/name used by LangChain |
+| `UAMI_CLIENT_ID` | Optional in code, expected in deployment | User-assigned managed identity for Foundry and infrastructure |
+| `AUTH_HANDLER_NAME` | `AGENTIC` in deployment | Selects Agent 365 agentic authorization |
+| `ENABLE_OBSERVABILITY` | `true` in deployment | Enables observability integration |
+| `ENABLE_A365_OBSERVABILITY_EXPORTER` | `true` in deployment | Exports telemetry to Agent 365 rather than console only |
+| `ASSIGNEE_RESOLVED` | Optional | Assignee for resolved incidents |
+| `ASSIGNEE_IN_PROGRESS` | Optional | Assignee for escalated incidents |
+| `HUNT_TIMESPAN` | `P7D` | Non-threat-intelligence hunting window |
+| `MAX_HUNT_RESULT_CHARS` | `24000` | Maximum raw result characters sent to a hunt model |
+| `INCIDENT_FETCH_ATTEMPTS` | `5` | Incident visibility retry count |
+| `INCIDENT_FETCH_DELAY_SECONDS` | `15` | Initial visibility retry delay |
+| `TOKEN_REFRESH_BUFFER_SECONDS` | `900` | Refresh tokens this many seconds before expiry |
+
+### Observability
+
+AutoSOC follows the sample's Microsoft OpenTelemetry pattern and enables LangChain instrumentation:
+
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_token_resolver=lambda agent_id, tenant_id: self.observability_token,
+    instrumentation_options={"langchain": {"enabled": True}},
+)
+```
+
+Because the trigger is a custom webhook rather than a Microsoft Agents activity, there is no `TurnContext` from which to derive Agent 365 identity. Before invoking the graph, the host exchanges an observability token and creates baggage with `TENANT_ID` and the agent instance ID. `AGENTIC_INSTANCE_ID` must therefore identify the provisioned agent instance; using the blueprint client ID can cause Agent 365 exporter `403 agent-ID-mismatch` failures.
+
+### Deployment
+
+The image intentionally does not copy application source. [containerapp.yaml](containerapp.yaml) mounts an Azure Files share at `/app`, so that share must contain all files from [app](app) before the container starts. This is useful for development iteration; production deployments should consider baking immutable source into the image.
+
+The complete provisioning sequence, Graph permissions, Logic App managed-identity setup, manifest substitution, deployment, and validation commands are in [SETUP.md](SETUP.md).
+
+## Operational characteristics
+
+- **Failure reporting:** background exceptions are logged, but the Logic App has already received `202`; there is no status endpoint, callback, or durable job record for the final outcome.
+- **Shutdown:** in-flight tasks are cancelled during replica shutdown.
+- **Concurrency:** graph execution is serial per process because tools and the observability token are mutable instance fields.
+- **Durability:** tasks, token cache, duplicate tracking, and LangGraph checkpoints are all in memory.
+- **Telemetry:** Microsoft OpenTelemetry enables LangChain instrumentation; OpenAI, OpenAI Agents, Semantic Kernel, and Agent Framework instrumentation are disabled.
+- **Prompt-injection boundary:** the context prompt tells the model not to execute incident instructions, and later KQL is generated by code from typed entity fields. Incident content still reaches models, so model output validation and deterministic write controls remain essential.
+- **Permissions:** the exchanged Graph identity needs least-privilege application/delegated permissions sufficient for incident read/write, comments, and advanced hunting, plus access to the relevant Defender data.
+- **Data exposure:** incident content and hunt results are sent to the configured Foundry model and telemetry metadata is exported. Retention, region, redaction, and organizational compliance settings should be reviewed outside this codebase.
+
+## Source map
 
 | File | Responsibility |
-|---|---|
-| `app/server.py` | aiohttp host, JWT middleware, caller allowlist, background tasks, telemetry setup |
-| `app/agent.py` | State schemas, prompts, LangGraph topology, model calls, KQL construction, incident decision mapping |
-| `app/graph_tools.py` | Microsoft Graph client and six security tools |
-| `app/token_manager.py` | Agent User token exchange and in-memory cache |
-| `containerapp.yaml` | Container Apps identity, ingress, environment, source volume, and scaling |
-| `Dockerfile` | Two-stage non-root runtime image |
-| `pyproject.toml` | Python and SDK dependencies |
+| --- | --- |
+| `app/server.py` | HTTP host, inbound authentication, allowlist, task lifecycle, observability setup |
+| `app/agent.py` | State models, LangGraph topology, KQL generation, model prompts, assessment mapping |
+| `app/graph_tools.py` | Microsoft Graph client and security tools |
+| `app/token_manager.py` | Agentic token exchange and in-memory JWT cache |
+| `containerapp.yaml` | Container App identity, ingress, environment, storage, and scale configuration |
+| `Dockerfile` | Python runtime, dependencies, non-root execution, health check, entry point |
+| `pyproject.toml` | Python package metadata and runtime dependencies |

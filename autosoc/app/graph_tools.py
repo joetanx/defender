@@ -1,5 +1,4 @@
-import asyncio
-import logging, json
+import logging, json, asyncio
 from os import environ
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Optional, Any
@@ -11,6 +10,10 @@ from langchain_core.tools import BaseTool, tool
 # base graph client dependencies
 from azure.core.credentials import AccessToken
 from msgraph import GraphServiceClient
+
+# for parsing graph security models
+from kiota_serialization_json.json_serialization_writer import JsonSerializationWriter
+from kiota_abstractions.serialization import Parsable
 
 # to synthesize query parameters for list incidents and list alerts
 from kiota_abstractions.base_request_configuration import RequestConfiguration
@@ -57,36 +60,10 @@ async def _get_graph_client() -> GraphServiceClient:
     )
 
 
-def _json_value(value: Any) -> Any:
-    """Convert Graph SDK response values to JSON-compatible data."""
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_json_value(item) for item in value]
-
-    additional_data = getattr(value, "additional_data", None)
-    if additional_data:
-        return _json_value(additional_data)
-
-    backing_store = getattr(value, "backing_store", None)
-    if backing_store and hasattr(backing_store, "enumerate_"):
-        return {
-            key: _json_value(item)
-            for key, item in backing_store.enumerate_()
-            if item is not None and key != "additional_data"
-        }
-
-    return str(value)
-
-
-def _response_json(value: Any) -> str:
-    return json.dumps(_json_value(value), indent=2, ensure_ascii=True)
+def _response_json(value: Parsable | list[Parsable]) -> str:
+    writer = JsonSerializationWriter()
+    writer.write_any_value(None, value)
+    return writer.get_serialized_content().decode("utf-8")
 
 
 def _parse_enum(enum_type: type[Enum], value: str) -> Enum:
@@ -110,65 +87,36 @@ async def create_graph_security_tools() -> list[BaseTool]:
         """Get one Microsoft security incident and its associated alerts."""
         attempts = int(environ.get("INCIDENT_FETCH_ATTEMPTS", "5"))
         delay = int(environ.get("INCIDENT_FETCH_DELAY_SECONDS", "15"))
+        query_params = IncidentsRequestBuilder.IncidentsRequestBuilderGetQueryParameters(
+            filter = f"id eq '{incident_id}'",
+            expand = ["alerts"],
+        )
+        request_configuration = RequestConfiguration(
+            query_parameters = query_params,
+        )
         for attempt in range(1, attempts + 1):
-            try:
-                incident = await graph_client.security.incidents.by_incident_id(incident_id).get()
-                query_params = Alerts_v2RequestBuilder.Alerts_v2RequestBuilderGetQueryParameters(
-                    filter=f"incidentId eq '{incident_id}'",
-                )
-                alerts = await graph_client.security.alerts_v2.get(
-                    request_configuration=RequestConfiguration(query_parameters=query_params)
-                )
-                return _response_json({
-                    "incident": incident,
-                    "alerts": alerts.value or [],
-                })
-            except Exception:
+            # List incident with filter for incident ID and expand alerts
+            # A single-item list of `msgraph.generated.models.security.incident.Incident` is returned when filtering for an incident ID
+            incident = await graph_client.security.incidents.get(request_configuration = request_configuration)
+            # If the incident is not found, wait and retry, up to the maximum number of attempts
+            if not incident.value:
                 if attempt == attempts:
-                    raise
+                    raise LookupError(
+                        f"Incident {incident_id} was not found after {attempts} attempts"
+                    )
+
                 wait_seconds = min(delay * (2 ** (attempt - 1)), 60)
                 logger.warning(
-                    "Incident fetch failed incident_id=%s attempt=%d/%d; retrying in %ds",
+                    "Incident not available yet incident_id=%s attempt=%d/%d; retrying in %ds",
                     incident_id,
                     attempt,
                     attempts,
                     wait_seconds,
                 )
                 await asyncio.sleep(wait_seconds)
+                continue
 
-    @tool
-    async def list_incidents(
-        hours: Annotated[Optional[int], Field(description='Number of hours to look back from now')] = 24,
-        limit: Annotated[Optional[int], Field(description='Maximum number of incidents to return')] = 10
-    ) -> str:
-        """List Microsoft security incidents created within the last number of hours."""
-        if hours < 1:
-            raise ValueError("hours must be at least 1")
-        if not 1 <= limit <= 100:
-            raise ValueError("limit must be between 1 and 100")
-
-        created_after = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-        query_params = IncidentsRequestBuilder.IncidentsRequestBuilderGetQueryParameters(
-            filter=f"createdDateTime ge {created_after}",
-            top=limit,
-        )
-        response = await graph_client.security.incidents.get(
-            request_configuration=RequestConfiguration(query_parameters=query_params)
-        )
-        return _response_json(response.value or [])
-
-    @tool
-    async def list_alerts_associated_with_incident(
-        incident_id: Annotated[str, Field(description='Incident ID')]
-    ) -> str:
-        """List Microsoft security alerts associated with a security incident ID."""
-        query_params = Alerts_v2RequestBuilder.Alerts_v2RequestBuilderGetQueryParameters(
-            filter=f"incidentId eq '{incident_id}'",
-        )
-        response = await graph_client.security.alerts_v2.get(
-            request_configuration=RequestConfiguration(query_parameters=query_params)
-        )
-        return _response_json(response.value or [])
+            return _response_json(incident.value[0])
 
     @tool
     async def run_hunting_query(
@@ -178,7 +126,7 @@ async def create_graph_security_tools() -> list[BaseTool]:
         """Run a KQL threat-hunting query."""
         request_body = RunHuntingQueryPostRequestBody(query=query, timespan=timespan)
         response = await graph_client.security.microsoft_graph_security_run_hunting_query.post(request_body)
-        return _response_json(response.results or [])
+        return _response_json(response.results)
 
     @tool
     async def add_incident_comment(
@@ -218,13 +166,11 @@ async def create_graph_security_tools() -> list[BaseTool]:
         if not updates:
             raise ValueError("Provide at least one incident field to update.")
 
-        response = await graph_client.security.incidents.by_incident_id(incident_id).patch(Incident(**updates))
-        return _response_json(response) if response else f"Incident {incident_id} updated."
+        await graph_client.security.incidents.by_incident_id(incident_id).patch(Incident(**updates))
+        return f"Incident {incident_id} updated."
 
     return [
         get_incident_with_alerts,
-        list_incidents,
-        list_alerts_associated_with_incident,
         run_hunting_query,
         add_incident_comment,
         update_incident,

@@ -1,9 +1,6 @@
 """Implements the checkpointed AutoSOC incident-triage workflow."""
 
-import asyncio
-import json
-import logging
-import operator
+import asyncio, json, logging, operator
 from os import environ
 from typing import Annotated, Literal, TypedDict
 
@@ -122,30 +119,13 @@ class AutoSOCAgent:
         )
         self.checkpointer = InMemorySaver()
         self._tools: dict[str, BaseTool] = {}
-        self._setup_lock = asyncio.Lock()
+        self._triage_lock = asyncio.Lock()
         self.context_agent = None
         self.hunt_models = {
             name: self.model.with_structured_output(HuntReport) for name in HUNT_PROMPTS
         }
         self.assessment_model = self.model.with_structured_output(AssessmentDecision)
         self.workflow = self._build_workflow()
-
-    async def initialize(self) -> None:
-        """Bind Agent User Graph tools before accepting triage work."""
-        if self._tools:
-            return
-        async with self._setup_lock:
-            if self._tools:
-                return
-            tools = await create_graph_security_tools()
-            self._tools = {graph_tool.name: graph_tool for graph_tool in tools}
-            self.context_agent = create_agent(
-                model=self.model,
-                tools=[self._tools["get_incident_with_alerts"]],
-                system_prompt=CONTEXT_PROMPT,
-                response_format=IncidentContext,
-            )
-            logger.info("AutoSOC Graph tools initialized")
 
     def _build_workflow(self):
         graph = StateGraph(TriageState)
@@ -160,21 +140,30 @@ class AutoSOCAgent:
         graph.add_edge("assessment", END)
         return graph.compile(checkpointer=self.checkpointer)
 
+    async def _initialize_graph_tools(self) -> None:
+        """Bind Graph tools using a token obtained for the current triage."""
+        tools = await create_graph_security_tools()
+        self._tools = {graph_tool.name: graph_tool for graph_tool in tools}
+        self.context_agent = create_agent(
+            model=self.model,
+            tools=[self._tools["get_incident_with_alerts"]],
+            system_prompt=CONTEXT_PROMPT,
+            response_format=IncidentContext,
+        )
+        logger.info("AutoSOC Graph tools initialized for triage")
+
     async def triage(self, incident_id: str, thread_id: str) -> AssessmentDecision:
         """Run a complete triage and return its final assessment."""
-        await self.initialize()
-        logger.info("Triage started incident_id=%s thread_id=%s", incident_id, thread_id)
-        result = await self.workflow.ainvoke(
-            {"incident_id": incident_id, "hunting_results": []},
-            config={"configurable": {"thread_id": thread_id}},
-        )
-        assessment = result["assessment"]
-        logger.info(
-            "Triage completed incident_id=%s category=%s",
-            incident_id,
-            assessment.category,
-        )
-        return assessment
+        async with self._triage_lock:
+            await self._initialize_graph_tools()
+            logger.info("Triage started incident_id=%s thread_id=%s", incident_id, thread_id)
+            result = await self.workflow.ainvoke(
+                {"incident_id": incident_id, "hunting_results": []},
+                config={"configurable": {"thread_id": thread_id}},
+            )
+            assessment = result["assessment"]
+            logger.info("✅ Triage completed incident_id: %s, category: %s", incident_id, assessment.category)
+            return assessment
 
     async def _gather_context(self, state: TriageState) -> dict:
         if self.context_agent is None:
@@ -186,7 +175,7 @@ class AutoSOCAgent:
         if not isinstance(context, IncidentContext):
             context = IncidentContext.model_validate(context)
         context.incident_id = state["incident_id"]
-        logger.info("Incident context gathered incident_id=%s", state["incident_id"])
+        logger.info("ℹ️ Incident %s context gathered", state["incident_id"])
         return {"context": context}
 
     def _make_hunt_node(self, hunter: str):
