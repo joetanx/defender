@@ -34,6 +34,18 @@ from msgraph.generated.models.security.alert_determination import AlertDetermina
 
 logger = logging.getLogger(__name__)
 
+INCIDENT_DETERMINATIONS = {
+    "Unknown": frozenset({"Unknown"}),
+    "TruePositive": frozenset({
+        "MultiStagedAttack", "Malware", "MaliciousUserActivity",
+        "UnwantedSoftware", "Phishing", "CompromisedAccount", "Other",
+    }),
+    "InformationalExpectedActivity": frozenset({
+        "SecurityTesting", "ConfirmedActivity", "LineOfBusinessApplication", "Other",
+    }),
+    "FalsePositive": frozenset({"NotMalicious", "NotEnoughDataToValidate", "Other"}),
+}
+
 
 class RawAccessTokenProvider:
     """A credential provider that returns a raw access token for the SDK."""
@@ -144,8 +156,8 @@ async def create_graph_security_tools() -> list[BaseTool]:
         incident_id: Annotated[str, Field(description='Incident ID')],
         status: Annotated[Optional[str], Field(description='Incident status; options: active, inProgress, resolved, redirected')] = None,
         assigned_to: Annotated[Optional[str], Field(description='User/group to be assigned to')] = None,
-        classification: Annotated[Optional[str], Field(description='Classification of the incident; options: falsePositive, truePositive, informationalExpectedActivity')] = None,
-        determination: Annotated[Optional[str], Field(description='Details to incident classification; options: unknown, apt, malware, securityPersonnel, securityTesting, unwantedSoftware, other, multiStagedAttack, compromisedAccount, phishing, maliciousUserActivity, notMalicious, notEnoughDataToValidate, confirmedUserActivity, lineOfBusinessApplication')] = None,
+        classification: Annotated[Optional[str], Field(description='Incident classification; requires a compatible determination unless Unknown')] = None,
+        determination: Annotated[Optional[str], Field(description='Determination compatible with the supplied classification')] = None,
         custom_tags: Annotated[Optional[list[str]], Field(description='Custom tags for the incident')] = None,
         resolving_comment: Annotated[Optional[str], Field(description='Comment to explain the resolution of the incident and the classification choice')] = None,
     ) -> str:
@@ -155,10 +167,32 @@ async def create_graph_security_tools() -> list[BaseTool]:
             updates["status"] = _parse_enum(IncidentStatus, status)
         if assigned_to is not None:
             updates["assigned_to"] = assigned_to
-        if classification is not None:
-            updates["classification"] = _parse_enum(AlertClassification, classification)
-        if determination is not None:
-            updates["determination"] = _parse_enum(AlertDetermination, determination)
+        classification_value = (
+            _parse_enum(AlertClassification, classification) if classification is not None else None
+        )
+        determination_value = (
+            _parse_enum(AlertDetermination, determination) if determination is not None else None
+        )
+        if determination_value is not None and classification_value is None:
+            raise ValueError("classification is required when determination is provided")
+        if classification_value is not None:
+            classification_name = classification_value.name
+            allowed = INCIDENT_DETERMINATIONS.get(classification_name)
+            determination_name = determination_value.name if determination_value is not None else None
+            if allowed is None:
+                raise ValueError(f"Unsupported incident classification: {classification_name}")
+            if classification_name == "Unknown":
+                if determination_name not in {None, "Unknown"}:
+                    raise ValueError("Unknown classification only supports Unknown determination")
+            elif determination_name not in allowed:
+                choices = ", ".join(sorted(allowed))
+                raise ValueError(
+                    f"Invalid determination '{determination_name}' for {classification_name}. "
+                    f"Expected one of: {choices}"
+                )
+            else:
+                updates["determination"] = determination_value
+            updates["classification"] = classification_value
         if custom_tags is not None:
             updates["custom_tags"] = custom_tags
         if resolving_comment is not None:

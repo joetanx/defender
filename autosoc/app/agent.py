@@ -11,9 +11,9 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from graph_tools import create_graph_security_tools
+from graph_tools import INCIDENT_DETERMINATIONS, create_graph_security_tools
 
 logger = logging.getLogger(__name__)
 
@@ -48,23 +48,37 @@ class HuntReport(BaseModel):
 
 
 class AssessmentDecision(BaseModel):
-    """Assessment agent decision before deterministic Defender updates."""
+    """Valid Microsoft Defender incident assessment."""
 
-    category: Literal["false_positive", "benign_true_positive", "true_positive", "suspicious"]
+    classification: Literal[
+        "Unknown", "TruePositive", "InformationalExpectedActivity", "FalsePositive"
+    ]
     determination: Literal[
-        "notMalicious",
-        "notEnoughDataToValidate",
-        "securityTesting",
-        "confirmedUserActivity",
-        "lineOfBusinessApplication",
-        "multiStagedAttack",
-        "malware",
-        "maliciousUserActivity",
-        "unwantedSoftware",
-        "phishing",
-        "compromisedAccount",
-    ] | None = None
+        "Unknown",
+        "MultiStagedAttack",
+        "Malware",
+        "MaliciousUserActivity",
+        "UnwantedSoftware",
+        "Phishing",
+        "CompromisedAccount",
+        "SecurityTesting",
+        "ConfirmedActivity",
+        "LineOfBusinessApplication",
+        "NotMalicious",
+        "NotEnoughDataToValidate",
+        "Other",
+    ]
     summary: str
+
+    @model_validator(mode="after")
+    def validate_determination(self):
+        allowed = INCIDENT_DETERMINATIONS[self.classification]
+        if self.determination not in allowed:
+            raise ValueError(
+                f"{self.determination} is invalid for {self.classification}; "
+                f"expected one of: {', '.join(sorted(allowed))}"
+            )
+        return self
 
 
 class TriageState(TypedDict, total=False):
@@ -91,21 +105,17 @@ HUNT_PROMPTS = {
 }
 
 ASSESSMENT_PROMPT = """You are the AutoSOC assessment agent. Classify the incident using only
-the supplied incident context and hunting reports. Use false_positive only for a benign detection,
-benign_true_positive for authorized or expected activity, true_positive for supported malicious
-activity, and suspicious when evidence is inconclusive but warrants investigation. Never close an
-incident merely because a hunt returned no results. Give a concise evidence-based summary and a
-determination compatible with the category.
+the supplied incident context and hunting reports. Never close an incident merely because a hunt
+returned no results. Use exactly one valid classification/determination pair:
+- Unknown: Unknown
+- TruePositive: MultiStagedAttack, Malware, MaliciousUserActivity, UnwantedSoftware, Phishing,
+  CompromisedAccount, or Other
+- InformationalExpectedActivity: SecurityTesting, ConfirmedActivity, LineOfBusinessApplication,
+  or Other
+- FalsePositive: NotMalicious, NotEnoughDataToValidate, or Other
+Use Unknown when evidence is insufficient to classify the incident. Give a concise,
+evidence-based summary.
 """
-
-RESOLVED_DETERMINATIONS = {
-    "notMalicious", "notEnoughDataToValidate", "securityTesting",
-    "confirmedUserActivity", "lineOfBusinessApplication",
-}
-MALICIOUS_DETERMINATIONS = {
-    "multiStagedAttack", "malware", "maliciousUserActivity",
-    "unwantedSoftware", "phishing", "compromisedAccount",
-}
 
 
 class AutoSOCAgent:
@@ -162,7 +172,7 @@ class AutoSOCAgent:
                 config={"configurable": {"thread_id": thread_id}},
             )
             assessment = result["assessment"]
-            logger.info("✅ Triage completed incident_id: %s, category: %s", incident_id, assessment.category)
+            logger.info("✅ Triage completed incident_id: %s, classification: %s", incident_id, assessment.classification)
             return assessment
 
     async def _gather_context(self, state: TriageState) -> dict:
@@ -237,7 +247,7 @@ class AutoSOCAgent:
             "incident_id": context.incident_id,
             **self._incident_update(decision),
         })
-        if decision.category in {"true_positive", "suspicious"}:
+        if decision.classification == "TruePositive":
             await self._tools["add_incident_comment"].ainvoke({
                 "incident_id": context.incident_id,
                 "comment": f"AutoSOC assessment: {decision.summary}",
@@ -245,42 +255,23 @@ class AutoSOCAgent:
         return {"assessment": decision}
 
     def _incident_update(self, decision: AssessmentDecision) -> dict:
-        if decision.category == "false_positive":
-            determination = decision.determination
-            if determination not in RESOLVED_DETERMINATIONS:
-                determination = "notEnoughDataToValidate"
-            return {
-                "status": "resolved",
-                "classification": "falsePositive",
-                "determination": determination,
-                "assigned_to": environ.get("ASSIGNEE_RESOLVED"),
-                "resolving_comment": f"AutoSOC assessment: {decision.summary}",
-            }
-        if decision.category == "benign_true_positive":
-            determination = decision.determination
-            if determination not in RESOLVED_DETERMINATIONS:
-                determination = "confirmedUserActivity"
-            return {
-                "status": "resolved",
-                "classification": "informationalExpectedActivity",
-                "determination": determination,
-                "assigned_to": environ.get("ASSIGNEE_RESOLVED"),
-                "resolving_comment": f"AutoSOC assessment: {decision.summary}",
-            }
-        if decision.category == "true_positive":
-            determination = decision.determination
-            if determination not in MALICIOUS_DETERMINATIONS:
-                determination = "maliciousUserActivity"
-            return {
-                "status": "inProgress",
-                "classification": "truePositive",
-                "determination": determination,
-                "assigned_to": environ.get("ASSIGNEE_IN_PROGRESS"),
-            }
-        return {
-            "status": "inProgress",
-            "assigned_to": environ.get("ASSIGNEE_IN_PROGRESS"),
+        resolved = decision.classification in {
+            "FalsePositive", "InformationalExpectedActivity",
         }
+        update = {
+            "status": "resolved" if resolved else (
+                "active" if decision.classification == "Unknown" else "inProgress"
+            ),
+            "classification": decision.classification,
+            "assigned_to": environ.get(
+                "ASSIGNEE_RESOLVED" if resolved else "ASSIGNEE_IN_PROGRESS"
+            ),
+        }
+        if decision.classification != "Unknown":
+            update["determination"] = decision.determination
+        if resolved:
+            update["resolving_comment"] = f"AutoSOC assessment: {decision.summary}"
+        return update
 
     def _build_query(self, hunter: str, context: IncidentContext) -> str | None:
         entities = context.entities
