@@ -133,10 +133,13 @@ async def create_graph_security_tools() -> list[BaseTool]:
     @tool
     async def run_hunting_query(
         query: Annotated[str, Field(description='KQL threat-hunting query')],
-        timespan: Annotated[Optional[str], Field(description='ISO 8601 duration (e.g., P30D, PT48H, PT30M)')] = 'P7D'
+        timespan: Annotated[Optional[str], Field(description='ISO 8601 duration (e.g., P30D, PT48H, PT30M)')] = 'P7D',
+        workspace_id: Annotated[Optional[str], Field(description='Log Analytics workspace GUID')] = None,
     ) -> str:
         """Run a KQL threat-hunting query."""
         request_body = RunHuntingQueryPostRequestBody(query=query, timespan=timespan)
+        if workspace_id is not None:
+            request_body.additional_data["workspaceId"] = workspace_id
         response = await graph_client.security.microsoft_graph_security_run_hunting_query.post(request_body)
         return _response_json(response.results)
 

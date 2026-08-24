@@ -50,6 +50,9 @@ properties:
             value: "${ASSIGNEE_RESOLVED}"
           - name: HUNT_TIMESPAN
             value: "P7D"
+          # Optional JSON list for SecurityEvent and Syslog hunts; blank uses the primary workspace.
+          - name: HUNT_WORKSPACES_JSON
+            value: "${HUNT_WORKSPACES_JSON}"
           # Logic App managed identities allowed to invoke /api/triage.
           - name: AUTOSOC_CALLER_IDS
             value: "${LOGIC_APP_MI_CLIENT_ID}"

@@ -155,6 +155,12 @@ The application constructs KQL itself. Incident text cannot directly supply exec
 
 Raw hunt output supplied to the model is truncated to `MAX_HUNT_RESULT_CHARS`, default `24000`. This limits prompt size but means evidence after that character boundary cannot affect the report.
 
+Windows and Linux hunts use the Graph caller's primary workspace when `HUNT_WORKSPACES_JSON` is
+absent or blank. When configured, AutoSOC runs each of those hunts once per listed workspace using
+the Graph `workspaceId` request property and combines workspace-labeled results. A failure in one
+workspace is retained alongside successful results; failure in every configured workspace fails the
+hunt. Other hunting branches continue to use their existing Graph scope.
+
 ## Assessment and incident updates
 
 The model selects one of four categories. Application code then enforces the actual Defender update:
@@ -265,6 +271,7 @@ Important runtime settings include:
 | `ASSIGNEE_RESOLVED` | Optional | Assignee for resolved incidents |
 | `ASSIGNEE_IN_PROGRESS` | Optional | Assignee for escalated incidents |
 | `HUNT_TIMESPAN` | `P7D` | Non-threat-intelligence hunting window |
+| `HUNT_WORKSPACES_JSON` | Primary workspace | JSON array of workspace names and GUIDs for Windows and Linux hunts |
 | `MAX_HUNT_RESULT_CHARS` | `24000` | Maximum raw result characters sent to a hunt model |
 | `INCIDENT_FETCH_ATTEMPTS` | `5` | Incident visibility retry count |
 | `INCIDENT_FETCH_DELAY_SECONDS` | `15` | Initial visibility retry delay |

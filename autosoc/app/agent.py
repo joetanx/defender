@@ -3,6 +3,7 @@
 import asyncio, json, logging, operator
 from os import environ
 from typing import Annotated, Literal, TypedDict
+from uuid import UUID
 
 from azure.identity import ManagedIdentityCredential
 from langchain.agents import create_agent
@@ -45,6 +46,13 @@ class HuntReport(BaseModel):
     status: Literal["completed", "skipped", "failed"]
     summary: str
     evidence: list[str] = Field(default_factory=list)
+
+
+class HuntWorkspace(BaseModel):
+    """A Log Analytics workspace targeted by workspace-scoped hunts."""
+
+    workspace_name: str = Field(alias="WorkspaceName", min_length=1)
+    workspace_id: UUID = Field(alias="WorkspaceId")
 
 
 class AssessmentDecision(BaseModel):
@@ -122,6 +130,7 @@ class AutoSOCAgent:
     """Runs autonomous Microsoft Defender incident triage with LangGraph."""
 
     def __init__(self) -> None:
+        self.hunt_workspaces = self._load_hunt_workspaces()
         self.model = init_chat_model(
             f"azure_ai:{environ['FOUNDRY_MODEL']}",
             project_endpoint=environ["FOUNDRY_PROJECT_ENDPOINT"],
@@ -136,6 +145,13 @@ class AutoSOCAgent:
         }
         self.assessment_model = self.model.with_structured_output(AssessmentDecision)
         self.workflow = self._build_workflow()
+        if self.hunt_workspaces:
+            logger.info(
+                "Workspace-scoped hunting configured workspace_count=%d",
+                len(self.hunt_workspaces),
+            )
+        else:
+            logger.info("Workspace-scoped hunting not configured; using primary workspace")
 
     def _build_workflow(self):
         graph = StateGraph(TriageState)
@@ -199,9 +215,7 @@ class AutoSOCAgent:
                     summary="Required entity types were not present in the incident.",
                 )]}
             try:
-                raw_result = await self._tools["run_hunting_query"].ainvoke(
-                    {"query": query, "timespan": self._timespan(hunter)}
-                )
+                raw_result = await self._execute_hunt(hunter, query)
                 max_chars = int(environ.get("MAX_HUNT_RESULT_CHARS", "24000"))
                 report = await self.hunt_models[hunter].ainvoke([HumanMessage(content=(
                     f"Hunter: {hunter}\nPurpose: {HUNT_PROMPTS[hunter]}\n"
@@ -232,6 +246,41 @@ class AutoSOCAgent:
                     summary=f"Hunt failed: {type(exc).__name__}",
                 )]}
         return hunt
+
+    async def _execute_hunt(self, hunter: str, query: str) -> str:
+        request = {"query": query, "timespan": self._timespan(hunter)}
+        if hunter not in {"windows_signin", "linux_signin"} or not self.hunt_workspaces:
+            return await self._tools["run_hunting_query"].ainvoke(request)
+
+        async def run(workspace: HuntWorkspace) -> dict:
+            try:
+                result = await self._tools["run_hunting_query"].ainvoke({
+                    **request,
+                    "workspace_id": str(workspace.workspace_id),
+                })
+                return {
+                    "WorkspaceName": workspace.workspace_name,
+                    "WorkspaceId": str(workspace.workspace_id),
+                    "Status": "completed",
+                    "Results": json.loads(result),
+                }
+            except Exception as exc:
+                logger.exception(
+                    "Workspace hunt failed hunter=%s workspace_id=%s",
+                    hunter,
+                    workspace.workspace_id,
+                )
+                return {
+                    "WorkspaceName": workspace.workspace_name,
+                    "WorkspaceId": str(workspace.workspace_id),
+                    "Status": "failed",
+                    "Error": type(exc).__name__,
+                }
+
+        results = await asyncio.gather(*(run(workspace) for workspace in self.hunt_workspaces))
+        if all(result["Status"] == "failed" for result in results):
+            raise RuntimeError(f"{hunter} failed in all configured workspaces")
+        return json.dumps(results, ensure_ascii=True)
 
     async def _assess(self, state: TriageState) -> dict:
         context = state["context"]
@@ -356,6 +405,20 @@ class AutoSOCAgent:
             value.strip() for value in values
             if isinstance(value, str) and value.strip() and len(value.strip()) <= 2048
         })
+
+    def _load_hunt_workspaces(self) -> list[HuntWorkspace]:
+        raw = environ.get("HUNT_WORKSPACES_JSON", "").strip()
+        if not raw:
+            return []
+        workspaces = [HuntWorkspace.model_validate(item) for item in json.loads(raw)]
+        if not workspaces:
+            raise ValueError(
+                "HUNT_WORKSPACES_JSON must contain at least one workspace when configured"
+            )
+        workspace_ids = [workspace.workspace_id for workspace in workspaces]
+        if len(workspace_ids) != len(set(workspace_ids)):
+            raise ValueError("HUNT_WORKSPACES_JSON contains duplicate workspace IDs")
+        return workspaces
 
     def _kql_string(self, value: str) -> str:
         return "'" + value.replace("'", "''") + "'"

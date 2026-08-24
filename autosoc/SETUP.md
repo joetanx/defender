@@ -46,7 +46,21 @@ Set application choices. The model name must be available in the selected Foundr
 export FOUNDRY_MODEL='gpt-5.6-luna'
 export ASSIGNEE_IN_PROGRESS='<soc-queue-or-user>'
 export ASSIGNEE_RESOLVED='<soc-queue-or-user>'
+export HUNT_WORKSPACES_JSON=''
 ```
+
+Leave `HUNT_WORKSPACES_JSON` blank to query the Graph caller's primary workspace. To run
+`SecurityEvent` and `Syslog` hunts across explicit workspaces, set it to a JSON array:
+
+```sh
+export HUNT_WORKSPACES_JSON='[
+  {"WorkspaceName":"alpha-soc","WorkspaceId":"5bc2e6fa-f7ac-4f50-8c88-da5a3ddd6e56"},
+  {"WorkspaceName":"bravo-soc","WorkspaceId":"64e61c7e-7ee6-4f38-b4f6-f1ca9867968e"}
+]'
+```
+
+The application rejects malformed JSON, invalid or duplicate workspace IDs, and an explicitly
+configured empty array. The Graph identity must have access to every listed workspace.
 
 Register the resource providers once per subscription, then wait until each reports `Registered`:
 
