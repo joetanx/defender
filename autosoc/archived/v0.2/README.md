@@ -1,6 +1,6 @@
 # AutoSOC
 
-AutoSOC is an authenticated webhook service that performs asynchronous triage of a Microsoft Defender/Sentinel incident. It retrieves the incident through Microsoft Graph Security, asks an orchestrator to plan evidence-driven hunts, runs the selected hunts in parallel, asks a model for a structured assessment, and applies the resulting assignment, status, classification, and comments back to the incident.
+AutoSOC is an authenticated webhook service that performs asynchronous triage of a Microsoft Defender/Sentinel incident. It retrieves the incident through Microsoft Graph Security, runs five parallel hunting branches, asks a model for a structured assessment, and applies the resulting assignment, status, classification, and comments back to the incident.
 
 The host and deployment pattern are adapted from the Microsoft Agent 365 Python LangChain sample. AutoSOC retains its Azure Container Apps hosting, Microsoft Agents authentication, Foundry model, managed identity, and Microsoft OpenTelemetry integration, while replacing conversational message handling and MCP tools with a Logic App webhook, LangGraph orchestration, and direct Microsoft Graph Security tools.
 
@@ -14,7 +14,7 @@ Use [SETUP.md](SETUP.md) to provision and deploy the service. This document desc
 | Microsoft Agents SDK JWT middleware | Validates the inbound bearer token; AutoSOC also allowlists the Logic App client ID |
 | Foundry model through `init_chat_model` and `ManagedIdentityCredential` | Used by one tool-calling context agent and structured-output hunt/assessment models |
 | Agent 365 MCP tools loaded per turn | Replaced by Graph Security tools bound to an agentic Graph token per triage |
-| LangChain agent invocation | Used inside a checkpointed LangGraph with structured planning and dynamic parallel hunters |
+| LangChain agent invocation | Replaced by a checkpointed LangGraph with five parallel hunting branches |
 | Microsoft OpenTelemetry LangChain instrumentation | Retained, with explicit Agent 365 identity baggage for webhook-triggered work |
 | Azure Files development mount | Retained: the image contains dependencies and `/app` supplies source files |
 
@@ -88,18 +88,20 @@ The service also uses an `asyncio.Lock`, so only one triage graph runs at a time
 ```mermaid
 flowchart LR
     START((START)) --> C[context]
-    C --> P[plan]
-    P -->|Send task 1| H1[hunter]
-    P -->|Send task 2| H2[hunter]
-    P -->|Send task N| HN[hunter]
-    P -->|empty plan| A[assessment]
-    H1 --> A
-    H2 --> A
-    HN --> A
+    C --> RA[related_alerts]
+    C --> TI[threat_intel]
+    C --> WS[windows_signin]
+    C --> LS[linux_signin]
+    C --> ES[entra_signin]
+    RA --> A[assessment]
+    TI --> A
+    WS --> A
+    LS --> A
+    ES --> A
     A --> END((END))
 ```
 
-The graph is compiled with an in-memory checkpointer. Every invocation receives a unique `thread_id`, but checkpoints do not survive process or replica restarts. The graph topology is static; LangGraph `Send` creates one isolated `hunter` invocation for each task selected at runtime.
+The graph is compiled with an in-memory checkpointer. Every invocation receives a unique `thread_id`, but checkpoints do not survive process or replica restarts.
 
 ### State schema
 
@@ -109,41 +111,41 @@ The graph is compiled with an in-memory checkpointer. Every invocation receives 
 | --- | --- | --- |
 | `incident_id` | `str` | ID supplied by the webhook |
 | `context` | `IncidentContext` | Model-normalized overview and entities from the incident and alerts |
-| `hunt_plan` | `HuntPlan` | Orchestrator rationale and up to six independently executable hunt tasks |
 | `hunting_results` | `list[HuntReport]` | Parallel branch reports, merged with list addition |
 | `assessment` | `AssessmentDecision` | Final structured category, determination, and summary |
 
-`IncidentContext.entities` can contain IP addresses, domains, URLs, file hashes, hostnames, users, and UPNs. Each `HuntTask` defines a hypothesis, objective, data sources, timespan, optional workspace IDs and template, and a one-to-three-query budget. `HuntReport` records application-owned task identity and query provenance together with the hunter's summary, evidence, and limitations.
+`IncidentContext.entities` can contain IP addresses, domains, URLs, file hashes, hostnames, users, and UPNs. `HuntReport` records the hunter name, `completed`/`skipped`/`failed` status, summary, and evidence strings.
 
 ### Node and edge contracts
 
 | Node | Kind | Input | Work performed | State output |
 | --- | --- | --- | --- | --- |
 | `context` | Tool-calling LangChain agent inside a LangGraph function node | `incident_id` | The model may call `get_incident_with_alerts`; structured output is validated as `IncidentContext` | `context` |
-| `plan` | Structured-output orchestrator model | `context`, available templates and workspaces | Selects only useful, grounded hunt tasks; validates task count, unique IDs, query budgets, and workspace IDs | `hunt_plan` |
-| `hunter` | Ephemeral tool-calling LangChain agent | One `HuntTask` and `context` supplied through `Send` | Chooses or adapts KQL, performs bounded read-only queries, returns typed findings, and attempts `add_incident_comment` | One `HuntReport` appended to `hunting_results` |
+| `related_alerts` | Composite deterministic/tool/model node | `context` | Builds KQL, calls `run_hunting_query`, asks a structured-output model to summarize, then attempts `add_incident_comment` | One `HuntReport` appended to `hunting_results` |
+| `threat_intel` | Composite deterministic/tool/model node | `context` | Same pattern, using threat-intelligence KQL and a fixed 30-day timespan | One `HuntReport` appended |
+| `windows_signin` | Composite deterministic/tool/model node | `context` | Hunts failed Windows logons and summarizes results | One `HuntReport` appended |
+| `linux_signin` | Composite deterministic/tool/model node | `context` | Hunts failed SSH logons and summarizes results | One `HuntReport` appended |
+| `entra_signin` | Composite deterministic/tool/model node | `context` | Hunts failed Entra sign-ins and summarizes results | One `HuntReport` appended |
 | `assessment` | Structured-output model plus deterministic tool calls | `context`, all `hunting_results` | Produces `AssessmentDecision`, maps it to allowed Defender fields, calls `update_incident`, and conditionally adds a comment | `assessment` |
 
-Each `hunter` invocation is an autonomous `create_agent` instance with an isolated reasoning context. The application, rather than the model, supplies report identity and status, records exact query metadata, limits query count and query length, fixes each execution to the planned timespan, and restricts workspace selection to the task's validated IDs. The assessment node is not a tool-calling agent: the model returns a typed decision, after which application code controls all writes.
+The hunting nodes are not autonomous agents in the LangChain `create_agent` sense. Each is orchestration code that deterministically selects a query and tool, then uses the model only to normalize the raw result into `HuntReport`. The assessment node is also not a tool-calling agent: the model returns a typed decision, after which application code controls all writes.
 
 Edge data flow is:
 
 | Edge | Data available to destination |
 | --- | --- |
 | `START -> context` | Initial `incident_id` and empty `hunting_results` |
-| `context -> plan` | Normalized incident context |
-| `plan -> hunter` | One `Send` per selected task, each carrying only its task and incident context |
-| `plan -> assessment` | Direct route when the orchestrator returns an empty grounded plan |
-| `all hunters -> assessment` | Context plus merged `HuntReport` values; fan-in waits for all dynamic branches |
+| `context -> each hunter` | Shared `incident_id`, normalized `context`, and current state |
+| `all hunters -> assessment` | `context` plus the five merged `HuntReport` values; the fan-in waits for every branch |
 | `assessment -> END` | Complete state including `assessment` |
 
-A hunter that returns without calling the query tool is marked `skipped`. A failed hunt returns `failed`; it does not abort other branches or assessment. Failure to add an individual hunt comment is logged but does not fail that hunt. By contrast, failure of the final incident update propagates and fails the graph run.
+A hunter with no required entity type returns `skipped` without calling Graph or the model. A failed hunt returns `failed`; it does not abort other branches or assessment. Failure to add an individual hunt comment is logged but does not fail that hunt. By contrast, failure of the final incident update propagates and fails the graph run.
 
-## Agentic hunting
+## Hunting branches
 
-The application still constructs five context-specific KQL templates from sanitized entity values. These are optional examples supplied to the orchestrator and hunter, not fixed branches. A hunter can adapt a template or write a different query to test its assigned hypothesis. Incident and query-result text is explicitly treated as untrusted data rather than instructions.
+The application constructs KQL itself. Incident text cannot directly supply executable KQL; extracted values are trimmed, deduplicated, length-limited, and escaped or JSON-encoded before interpolation.
 
-| Template | Data source | Entity requirement | Query purpose | Default timespan |
+| Hunter | Data source | Entity requirement | Query purpose | Timespan |
 | --- | --- | --- | --- | --- |
 | `related_alerts` | `SecurityAlert` | Any supported entity | Find other incidents' alerts containing the same entity values | `HUNT_TIMESPAN`, default `P7D` |
 | `threat_intel` | `ThreatIntelIndicators` | IP, domain, URL, or hash | Match observable values and retain the latest indicator record | Fixed `P30D` |
@@ -151,13 +153,13 @@ The application still constructs five context-specific KQL templates from saniti
 | `linux_signin` | `Syslog` | Hostname or user | Find `sshd` failed-password events | `HUNT_TIMESPAN` |
 | `entra_signin` | `SigninLogs` | User or UPN | Find failed Entra sign-ins | `HUNT_TIMESPAN` |
 
-The orchestrator may select any subset of these templates or create other grounded tasks. A plan contains at most six tasks, and every task allows at most three queries. Raw query output supplied to the hunter is truncated to `MAX_HUNT_RESULT_CHARS`, default `24000`; KQL text is limited by `MAX_HUNT_QUERY_CHARS`, default `12000`. The exact query, planned timespan, and workspace ID are retained in the report even when its result is truncated.
+Raw hunt output supplied to the model is truncated to `MAX_HUNT_RESULT_CHARS`, default `24000`. This limits prompt size but means evidence after that character boundary cannot affect the report.
 
-When `HUNT_WORKSPACES_JSON` is absent or blank, hunters query the Graph caller's primary workspace.
-When configured, the orchestrator can assign one or more listed workspace IDs to a task. The
-task-scoped query tool rejects any workspace ID that was not both configured and assigned by the
-validated plan. A hunter decides which assigned workspaces require queries within its total query
-budget.
+Windows and Linux hunts use the Graph caller's primary workspace when `HUNT_WORKSPACES_JSON` is
+absent or blank. When configured, AutoSOC runs each of those hunts once per listed workspace using
+the Graph `workspaceId` request property and combines workspace-labeled results. A failure in one
+workspace is retained alongside successful results; failure in every configured workspace fails the
+hunt. Other hunting branches continue to use their existing Graph scope.
 
 ## Assessment and incident updates
 
@@ -268,11 +270,9 @@ Important runtime settings include:
 | `ENABLE_A365_OBSERVABILITY_EXPORTER` | `true` in deployment | Exports telemetry to Agent 365 rather than console only |
 | `ASSIGNEE_RESOLVED` | Optional | Assignee for resolved incidents |
 | `ASSIGNEE_IN_PROGRESS` | Optional | Assignee for escalated incidents |
-| `HUNT_TIMESPAN` | `P7D` | Default timespan placed in non-threat-intelligence templates |
-| `HUNT_WORKSPACES_JSON` | Primary workspace | JSON array of workspace names and GUIDs available for planner assignment |
+| `HUNT_TIMESPAN` | `P7D` | Non-threat-intelligence hunting window |
+| `HUNT_WORKSPACES_JSON` | Primary workspace | JSON array of workspace names and GUIDs for Windows and Linux hunts |
 | `MAX_HUNT_RESULT_CHARS` | `24000` | Maximum raw result characters sent to a hunt model |
-| `MAX_HUNT_QUERY_CHARS` | `12000` | Maximum KQL characters accepted by a task-scoped query tool |
-| `HUNTER_RECURSION_LIMIT` | `12` | Maximum LangGraph steps inside one ephemeral hunter agent |
 | `INCIDENT_FETCH_ATTEMPTS` | `5` | Incident visibility retry count |
 | `INCIDENT_FETCH_DELAY_SECONDS` | `15` | Initial visibility retry delay |
 | `TOKEN_REFRESH_BUFFER_SECONDS` | `900` | Refresh tokens this many seconds before expiry |
