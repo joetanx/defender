@@ -1,4 +1,4 @@
-import sys, logging, asyncio, time
+import sys, logging, asyncio
 from dataclasses import dataclass
 from html import escape
 from os import environ
@@ -51,6 +51,8 @@ agent_app = AgentApplication[TurnState](
 )
 
 tenant_id = agents_sdk_config['CONNECTIONS']['SERVICE_CONNECTION']['SETTINGS']['TENANTID']
+
+# Initialize global MSAL token cache.
 msal_token_cache = msal.SerializableTokenCache()
 
 
@@ -60,6 +62,7 @@ agent_id_token_provider = connection_manager.get_connection("AGENTIC")
 REFRESH_BUFFER_SECONDS = int(environ.get("TOKEN_REFRESH_BUFFER_SECONDS", "300"))
 
 async def get_agent_id_msal_app() -> msal.ConfidentialClientApplication:
+    # Create agent ID MSAL client app with agent blueprint assertion.
     agentbp_token = await agent_id_token_provider.get_agentic_application_token(
         tenant_id=tenant_id,
         agent_app_instance_id=agent_id,
@@ -72,11 +75,13 @@ async def get_agent_id_msal_app() -> msal.ConfidentialClientApplication:
     )
 
 async def get_observability_token() -> str:
+    # Get agent ID s2s observability token.
     return (await get_agent_id_msal_app()).acquire_token_for_client(
         scopes=["api://9b975845-388f-4429-889e-eab1ef63949c/.default"]
     )["access_token"]
 
 async def get_obo_token(user_assertion: str, scopes: list[str]) -> str:
+    # Get agent ID on-behalf-of (OBO) token for specified scopes with user assertion.
     return (await get_agent_id_msal_app()).acquire_token_on_behalf_of(
         user_assertion=user_assertion,
         scopes=scopes
@@ -86,6 +91,7 @@ async def get_obo_token(user_assertion: str, scopes: list[str]) -> str:
 # Token acquisition methods for Teams bot.
 teams_bot_id = agents_sdk_config['CONNECTIONS']['SERVICE_CONNECTION']['SETTINGS']['CLIENTID']
 def get_teams_bot_msal_app() -> msal.ConfidentialClientApplication:
+    # Create Teams bot MSAL client app with UAMI assertion.
     uami_token = ManagedIdentityCredential(client_id=environ["UAMI_CLIENT_ID"]).get_token(
         "api://AzureADTokenExchange/.default"
     ).token
@@ -97,7 +103,7 @@ def get_teams_bot_msal_app() -> msal.ConfidentialClientApplication:
     )
 
 
-# Human authorization code flow handlers
+# Human authorization code flow handlers.
 auth_requests: dict[str, tuple[Any, Activity]] = {}
 agentbp_scope = f"api://{agents_sdk_config['CONNECTIONS']['AGENTIC']['SETTINGS']['CLIENTID']}/access_agent_as_user"
 
@@ -108,6 +114,7 @@ class TokenAcquisitionError(Exception):
     pass
 
 async def trigger_auth_code_flow(continuation_activity: Activity,) -> str:
+    # Trigger Teams bot authorization code flow for human user authentication.
     try:
         flow = get_teams_bot_msal_app().initiate_auth_code_flow(
             scopes=[agentbp_scope],
@@ -123,20 +130,24 @@ async def redeem_auth_code(
     state: str | None,
     auth_response: dict[str, str],
 ) -> Activity:
+    # Check if authorization request exists for given state.
     auth_request = auth_requests.get(state)
     if auth_request is None:
         raise AuthenticationRequired("Authorization flow not found or expired.")
     flow, continuation_activity = auth_request
     try:
-        # Redeem the authorization code for access and refresh token, native msal client handles caching them in msal_token_cache
+        # Redeem authorization code for access and refresh tokens, native msal client handles caching them in msal_token_cache.
         get_teams_bot_msal_app().acquire_token_by_auth_code_flow(flow, auth_response)["access_token"]
+        # Clear authorization request from cache after redemption.
         auth_requests.pop(state, None)
+        # Return continuation activity to proceed with bot conversation.
         return continuation_activity
     except Exception as error:
         raise TokenAcquisitionError(f"Failed to redeem auth code for tokens: {error}")
 
 async def get_obo_token(user_id: str, scopes: list[str]) -> str:
     account = next(
+        # Find account matching given user_id using generator expression.
         (
             item
             for item in get_teams_bot_msal_app().get_accounts()
@@ -148,10 +159,12 @@ async def get_obo_token(user_id: str, scopes: list[str]) -> str:
         raise AuthenticationRequired("User account not found for silent token acquisition.")
     try:
         user_assertion = get_teams_bot_msal_app().acquire_token_silent_with_error(
+            # Get access token in cache or use refresh token in cache to get access token, raise error if none available.
             [agentbp_scope],
             account=account
         )["access_token"]
         return (await get_agent_id_msal_app()).acquire_token_on_behalf_of(
+            # Get OBO token with user assertion.
             user_assertion=user_assertion,
             scopes=scopes
         )["access_token"]
@@ -160,6 +173,7 @@ async def get_obo_token(user_id: str, scopes: list[str]) -> str:
 
 
 def authentication_card(auth_url: str) -> Activity:
+    # Teams authentication card for user sign-in.
     return Activity(
         type="message",
         attachments=[
@@ -225,7 +239,7 @@ def get_thread_id(context: TurnContext) -> str:
     return str(sender_id or getattr(activity, "id", "default"))
 
 
-# Tooling and agent setup
+# Tooling and agent setup.
 @tool
 def current_utc_time() -> str:
     """Return the current UTC date and time."""
@@ -247,9 +261,11 @@ MCP_SERVERS = {
 }
 
 async def setup_tools(user_id: str):
+    # Iterate over the configured MCP servers and acquire OBO tokens for each.
     servers = {}
     for name, (url, scopes) in MCP_SERVERS.items():
         token = await get_obo_token(user_id, scopes)
+        # If OBO token acquisition fails, respective exceptions will be raised (handles failures and fresh conversations).
         servers[name] = {
             "transport": "streamable_http",
             "url": url,
@@ -296,12 +312,14 @@ def main() -> None:
             try:
                 mcp_tools = await setup_tools(user_id)
             except AuthenticationRequired:
+                # Send authentication card to trigger auth code flow if user_id not in accounts.
                 auth_url = await trigger_auth_code_flow(
                     context.activity.get_conversation_reference().get_continuation_activity()
                 )
                 await context.send_activity(authentication_card(auth_url))
                 return
             except TokenAcquisitionError:
+                # Handle any token acquisition errors.
                 logger.exception("Could not configure MCP authorization")
                 await context.send_activity(
                     "The agent could not acquire delegated access. Contact an administrator to verify agent permissions and consent."
@@ -323,9 +341,11 @@ def main() -> None:
 
     async def auth_callback(request: Request) -> Response:
         auth_response = dict(
+            # Retrieve authentication response redirected from Entra.
             await request.post() if request.method == "POST" else request.query
         )
         try:
+            # Redeem the authorization code for access and refresh tokens.
             continuation_activity = await redeem_auth_code(
                 state=auth_response.get("state"),
                 auth_response=auth_response,
@@ -344,6 +364,7 @@ def main() -> None:
         except TokenAcquisitionError as error:
             logger.exception("Failed to redeem auth code for tokens")
             if continuation_activity:
+                # Notify user of authentication failure if continuation activity is available.
                 async def notify_failure(context: TurnContext) -> None:
                     await context.send_activity(
                         "Authentication failed. Return to Teams and start sign-in again."
@@ -376,6 +397,7 @@ def main() -> None:
         a365_use_s2s_endpoint=True,
         a365_enable_observability_exporter=True,
         instrumentation_options={
+            # Disable OpenAI and MAF instrumentations because they are enabled by default and causes module not found errors since they are not installed.
             "openai_agents": {"enabled": False},
             "agent_framework": {"enabled": False},
         },

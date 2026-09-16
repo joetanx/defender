@@ -38,8 +38,8 @@ WORKDIR /app
 # 2. Automatically change ownership to the non-root user
 COPY --from=builder --chown=app:app /opt/venv /opt/venv
 
-# Copy application code (keep commented if mounting from volume)
-# COPY --chown=app:app . .
+# Copy application code
+COPY --chown=app:app app.py /app/
 
 # Switch away from root to the non-root application user
 USER app
@@ -51,4 +51,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; from os import environ; urllib.request.urlopen('http://localhost:'+environ.get('PORT', '3978')+'/api/health', timeout=5)"
 
 # Entrypoint binds 0.0.0.0:$PORT and serves /api/messages + /api/health.
-CMD ["python", "server.py"]
+CMD ["python", "app.py"]
