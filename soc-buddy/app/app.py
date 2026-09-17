@@ -1,9 +1,11 @@
-import sys, logging, asyncio
+import sys, logging, asyncio, json
 from dataclasses import dataclass
 from html import escape
 from os import environ
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, date, datetime, timedelta
+from typing import Annotated, Optional, Any
+from pydantic import Field
+from enum import Enum
 
 import msal
 from aiohttp.web import Application, Request, Response, json_response, run_app
@@ -33,6 +35,14 @@ from microsoft_agents.hosting.core import (
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 from microsoft.opentelemetry.a365.core import BaggageBuilder
 from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate
+
+from azure.core.credentials import AccessToken
+from msgraph import GraphServiceClient
+from msgraph.generated.models.security.alert_comment import AlertComment
+from msgraph.generated.models.security.incident import Incident
+from msgraph.generated.models.security.incident_status import IncidentStatus
+from msgraph.generated.models.security.alert_classification import AlertClassification
+from msgraph.generated.models.security.alert_determination import AlertDetermination
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler(sys.stdout)])
@@ -220,7 +230,7 @@ def trim_conversation_history(state: AgentState, runtime) -> dict:
             state["messages"],
             strategy="last",
             token_counter="approximate",
-            max_tokens=12_000,
+            max_tokens=128_000,
             start_on="human",
             include_system=True,
         )
@@ -239,11 +249,114 @@ def get_thread_id(context: TurnContext) -> str:
     return str(sender_id or getattr(activity, "id", "default"))
 
 
-# Tooling and agent setup.
-@tool
-def current_utc_time() -> str:
-    """Return the current UTC date and time."""
-    return datetime.now(UTC).isoformat()
+# Microsoft Graph Security API tools.
+class GraphAccessTokenProvider:
+    # Token provider for Microsoft Graph SDK.
+    def __init__(self, token: str):
+        self.token = token
+
+    # The SDK calls get_token to retrieve the active Bearer token
+    def get_token(self, *scopes, **kwargs) -> AccessToken:
+        # Provide token string and an arbitrary future expiration timestamp (in seconds)
+        return AccessToken(self.token, expires_on=int((datetime.now().astimezone() + timedelta(hours=1)).timestamp()))
+
+async def get_graph_client(user_id: str) -> GraphServiceClient:
+    """Get a token for Microsoft Graph API using MSAL, and return a GraphServiceClient instance."""
+
+    graph_token = await get_obo_token(user_id, ["https://graph.microsoft.com/.default"])
+    return GraphServiceClient(
+        GraphAccessTokenProvider(graph_token)
+    )
+
+def _json_value(value: Any) -> Any:
+    """Convert Graph SDK response values to JSON-compatible data."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_value(item) for item in value]
+
+    additional_data = getattr(value, "additional_data", None)
+    if additional_data:
+        return _json_value(additional_data)
+
+    backing_store = getattr(value, "backing_store", None)
+    if backing_store and hasattr(backing_store, "enumerate_"):
+        return {
+            key: _json_value(item)
+            for key, item in backing_store.enumerate_()
+            if item is not None and key != "additional_data"
+        }
+
+    return str(value)
+
+def _response_json(value: Any) -> str:
+    return json.dumps(_json_value(value), indent=2, ensure_ascii=True)
+
+def _parse_enum(enum_type: type[Enum], value: str) -> Enum:
+    normalized = value.strip().lower()
+    for member in enum_type:
+        if member.name.lower() == normalized or str(member.value).lower() == normalized:
+            return member
+    choices = ", ".join(str(member.value) for member in enum_type)
+    raise ValueError(f"Invalid {enum_type.__name__} '{value}'. Expected one of: {choices}")
+
+async def get_graph_tools(user_id: str) -> list[BaseTool]:
+    
+    graph_client = await get_graph_client(user_id)
+
+    @tool
+    async def add_incident_comment(
+        incident_id: Annotated[str, Field(description='Incident ID')],
+        comment: Annotated[str, Field(description='Comment to be added')]
+    ) -> str:
+        """Add a comment to a Microsoft security incident."""
+        request_body = AlertComment(odata_type=None, comment=comment)
+        url = f"https://graph.microsoft.com/v1.0/security/incidents/{incident_id}/comments"
+        await graph_client.security.incidents.with_url(url).post(request_body)
+        return f"Comment added to incident {incident_id}."
+
+    @tool
+    async def update_incident(
+        incident_id: Annotated[str, Field(description='Incident ID')],
+        status: Annotated[Optional[str], Field(description='Incident status; options: active, inProgress, resolved, redirected')] = None,
+        assigned_to: Annotated[Optional[str], Field(description='User/group to be assigned to')] = None,
+        classification: Annotated[Optional[str], Field(description='Classification of the incident; options: falsePositive, truePositive, informationalExpectedActivity')] = None,
+        determination: Annotated[Optional[str], Field(description='Details to incident classification; options: unknown, apt, malware, securityPersonnel, securityTesting, unwantedSoftware, other, multiStagedAttack, compromisedAccount, phishing, maliciousUserActivity, notMalicious, notEnoughDataToValidate, confirmedUserActivity, lineOfBusinessApplication')] = None,
+        custom_tags: Annotated[Optional[list[str]], Field(description='Custom tags for the incident')] = None,
+        resolving_comment: Annotated[Optional[str], Field(description='Comment to explain the resolution of the incident and the classification choice')] = None,
+    ) -> str:
+        """Update fields on a Microsoft security incident, omitted fields remain unchanged."""
+        updates: dict[str, Any] = {}
+        if status is not None:
+            updates["status"] = _parse_enum(IncidentStatus, status)
+        if assigned_to is not None:
+            updates["assigned_to"] = assigned_to
+        if classification is not None:
+            updates["classification"] = _parse_enum(AlertClassification, classification)
+        if determination is not None:
+            updates["determination"] = _parse_enum(AlertDetermination, determination)
+        if custom_tags is not None:
+            updates["custom_tags"] = custom_tags
+        if resolving_comment is not None:
+            updates["resolving_comment"] = resolving_comment
+        if not updates:
+            raise ValueError("Provide at least one incident field to update.")
+
+        response = await graph_client.security.incidents.by_incident_id(incident_id).patch(Incident(**updates))
+        return _response_json(response) if response else f"Incident {incident_id} updated."
+
+    return [
+        add_incident_comment,
+        update_incident,
+    ]
+
+# MCP server tools
 
 MCP_SERVERS = {
     "sentinel-mcp-data-exploration": (
@@ -260,7 +373,7 @@ MCP_SERVERS = {
     ),
 }
 
-async def setup_tools(user_id: str):
+async def get_mcp_tools(user_id: str) -> list[BaseTool]:
     # Iterate over the configured MCP servers and acquire OBO tokens for each.
     servers = {}
     for name, (url, scopes) in MCP_SERVERS.items():
@@ -273,6 +386,12 @@ async def setup_tools(user_id: str):
         }
     client = MultiServerMCPClient(servers)
     return await client.get_tools()
+
+# Agent setup.
+@tool
+def current_utc_time() -> str:
+    """Return the current UTC date and time."""
+    return datetime.now(UTC).isoformat()
 
 def setup_agent(tools: list[BaseTool]):
     # Create and configure a LangChain agent with the specified tools.
@@ -310,7 +429,8 @@ def main() -> None:
                 )
                 return
             try:
-                mcp_tools = await setup_tools(user_id)
+                mcp_tools = await get_mcp_tools(user_id)
+                graph_tools = await get_graph_tools(user_id)
             except AuthenticationRequired:
                 # Send authentication card to trigger auth code flow if user_id not in accounts.
                 auth_url = await trigger_auth_code_flow(
@@ -325,7 +445,7 @@ def main() -> None:
                     "The agent could not acquire delegated access. Contact an administrator to verify agent permissions and consent."
                 )
                 return
-            agent = setup_agent([current_utc_time, WebSearchTool(), *mcp_tools])
+            agent = setup_agent([current_utc_time, WebSearchTool(), *mcp_tools, *graph_tools])
             # Invoke the agent with the user's message and the current thread ID.
             result = await agent.ainvoke(
                 {"messages": [{"role": "user", "content": text}]},

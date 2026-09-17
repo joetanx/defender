@@ -39,7 +39,7 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /opt/venv /opt/venv
 
 # Copy application code
-COPY --chown=app:app app.py /app/
+COPY --chown=app:app app/ /app/
 
 # Switch away from root to the non-root application user
 USER app
@@ -48,7 +48,7 @@ EXPOSE 3978
 
 # Healthcheck using Python's built-in urllib to avoid installing curl/wget
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import urllib.request; from os import environ; urllib.request.urlopen('http://localhost:'+environ.get('PORT', '3978')+'/api/health', timeout=5)"
+    CMD python -c "import urllib.request; from os import environ; urllib.request.urlopen('http://localhost:'+environ.get('PORT', '3978')+'/api/messages', timeout=5)"
 
-# Entrypoint binds 0.0.0.0:$PORT and serves /api/messages + /api/health.
+# Entrypoint binds 0.0.0.0:$PORT and serves /api/messages
 CMD ["python", "app.py"]
